@@ -1,0 +1,1 @@
+Class: GummyBear reconstruct, Image ROCAUC: 0.613, Pixel ROCAUC: 0.820, AUPRO:  0.489

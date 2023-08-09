@@ -1,0 +1,17 @@
+Image ROCAUC Results 
+
+| Method      |   Candycane |   Chocolatecookie |   Gummybear |   Mean |
+|:------------|------------:|------------------:|------------:|-------:|
+| reconstruct |        0.65 |             0.965 |       0.612 |  0.742 | 
+
+Pixel ROCAUC Results 
+
+| Method      |   Candycane |   Chocolatecookie |   Gummybear |   Mean |
+|:------------|------------:|------------------:|------------:|-------:|
+| reconstruct |       0.981 |             0.992 |        0.82 |  0.931 | 
+
+AU PRO Results 
+
+| Method      |   Candycane |   Chocolatecookie |   Gummybear |   Mean |
+|:------------|------------:|------------------:|------------:|-------:|
+| reconstruct |       0.932 |              0.96 |       0.489 |  0.794 |
