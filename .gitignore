@@ -18,3 +18,11 @@ core/models/__pycache__/ResNetAE.cpython-38.pyc
 core/models/__pycache__/simplenet.cpython-38.pyc
 core/models/__pycache__/unet_model.cpython-38.pyc
 core/models/__pycache__/unet_parts.cpython-38.pyc
+core/__pycache__/data.cpython-38.pyc
+utils/__pycache__/mvtec3d_util.cpython-38.pyc
+utils/__pycache__/pos_embed.cpython-38.pyc
+utils/__pycache__/au_pro_util.cpython-38.pyc
+utils/__pycache__/visualize_util.cpython-38.pyc
+core/__pycache__/reconstruct.cpython-38.pyc
+core/__pycache__/runner.cpython-38.pyc
+output/*

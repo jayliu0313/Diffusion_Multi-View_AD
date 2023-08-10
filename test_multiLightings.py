@@ -14,7 +14,7 @@ import pandas as pd
 
 parser = argparse.ArgumentParser(description='test')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/cnn_fuseRec_lr00003/ckpt_000020.pth")
+parser.add_argument('--ckpt_path', default="checkpoints/cnn_fuseRec_lr00003/ckpt_000100.pth")
 parser.add_argument('--output_dir', default="./output")
 parser.add_argument('--dataset_type', default="eyecandies")
 parser.add_argument('--method_name', default="mean_reconstruct")
