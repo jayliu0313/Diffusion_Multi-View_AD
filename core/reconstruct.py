@@ -70,7 +70,27 @@ class Base_Reconsturct():
         
         visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, self.cls_path)
     
-
+    def compute_max_score(self, score_maps, lightings):
+        final_score = -99999
+        final_map = torch.zeros((1, self.image_size, self.image_size))
+        img = torch.zeros((3, self.image_size, self.image_size))
+        for i in range(6):
+            score_map = score_maps[i, :, :, :]
+            topk_score, _ = torch.topk(score_map.flatten(), 20)
+            score = torch.mean(topk_score)
+            if(final_score < score):
+                final_score = score  
+                final_map = score_map
+                img = lightings[i, :, :, :]
+        return final_map, final_score, img
+    
+    def compute_mean_score(self, score_maps, lightings):
+        img = lightings[0, :, :, :]
+        final_map = torch.mean(score_maps, dim=0)
+        topk_score, _ = torch.topk(final_map.flatten(), 20)
+        final_score = torch.mean(topk_score)
+        return final_map, final_score, img
+    
 # test method 1
 class Mean_Reconstruct(Base_Reconsturct):
     def __init__(self, args, model, cls_path):
@@ -89,22 +109,9 @@ class Mean_Reconstruct(Base_Reconsturct):
         score_maps = score_maps.unsqueeze(1)
 
         if(self.score_type == 0):
-            final_score = -99999
-            final_map = torch.zeros((1, self.image_size, self.image_size))
-            img = torch.zeros((3, self.image_size, self.image_size))
-            for i in range(6):
-                score_map = score_maps[i, :, :, :]
-                topk_score, _ = torch.topk(score_map.flatten(), 20)
-                score = torch.mean(topk_score)
-                if(final_score < score):
-                    final_score = score  
-                    final_map = score_map
-                    img = lightings[i, :, :, :]
+            final_map, final_score, img = self.compute_max_score(score_maps, lightings)
         elif(self.score_type == 1):
-            img = lightings[0, :, :, :]
-            final_map = torch.mean(score_maps, dim=0)
-            topk_score, _ = torch.topk(final_map.flatten(), 20)
-            final_score = torch.mean(topk_score)
+            final_map, final_score, img = self.compute_mean_score(score_maps, lightings)
 
         self.image_labels.append(np.array(label))
         self.image_preds.append(t2np(final_score))
@@ -129,22 +136,9 @@ class Reconstruct(Base_Reconsturct):
         score_maps = score_maps.unsqueeze(1)
 
         if(self.score_type == 0):
-            final_score = -99999
-            final_map = torch.zeros((1, self.image_size, self.image_size))
-            img = torch.zeros((3, self.image_size, self.image_size))
-            for i in range(6):
-                score_map = score_maps[i, :, :, :]
-                topk_score, _ = torch.topk(score_map.flatten(), 20)
-                score = torch.mean(topk_score)
-                if(final_score < score):
-                    final_score = score  
-                    final_map = score_map
-                    img = lightings[i, :, :, :]
+            final_map, final_score, img = self.compute_max_score(score_maps, lightings)
         elif(self.score_type == 1):
-            img = lightings[0, :, :, :]
-            final_map = torch.mean(score_maps, dim=0)
-            topk_score, _ = torch.topk(final_map.flatten(), 20)
-            final_score = torch.mean(topk_score)
+            final_map, final_score, img = self.compute_mean_score(score_maps, lightings)
 
         self.image_labels.append(label)
         self.image_preds.append(t2np(final_score))

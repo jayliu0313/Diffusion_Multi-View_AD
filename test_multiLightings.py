@@ -6,8 +6,8 @@ import os.path as osp
 import datetime
 
 from core.models.network import Convolution_AE#, Autoencoder
-from core.models.unet_model import UNet
-from core.models.mae import mae_vit_base_patch16_dec512d8b
+# from core.models.unet_model import UNet
+# from core.models.mae import mae_vit_base_patch16_dec512d8b
 from core.runner import Runner
 import datetime
 import pandas as pd
@@ -22,8 +22,6 @@ parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 parser.add_argument("--workers", default=8)
-parser.add_argument("--common_feature_dim", default=256)
-parser.add_argument("--unique_feature_dim", default=256)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 
 args = parser.parse_args()
