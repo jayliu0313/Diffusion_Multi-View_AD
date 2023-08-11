@@ -153,3 +153,15 @@ Epoch 148: Loss: 0.000315
 Epoch 149: Loss: 0.000306
 Epoch 150: Loss: 0.000308
 Epoch 151: Loss: 0.000307
+Epoch 152: Loss: 0.000292
+Epoch 153: Loss: 0.000311
+Epoch 154: Loss: 0.000310
+Epoch 155: Loss: 0.000305
+Epoch 156: Loss: 0.000287
+Epoch 157: Loss: 0.000341
+Epoch 158: Loss: 0.000283
+Epoch 159: Loss: 0.000279
+Epoch 160: Loss: 0.000320
+Epoch 161: Loss: 0.000278
+Epoch 162: Loss: 0.000315
+Epoch 163: Loss: 0.000281
