@@ -26,12 +26,13 @@ class Base_Reconsturct():
         self.predictions = []
         self.gts = []
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        self.criteria = torch.nn.MSELoss()    
         self.fc_dim = args.common_feature_dim
         
         self.image_size = args.image_size
         
         self.cls_path = cls_path
+        self.cls_rec_loss = 0.0
         self.reconstruct_path = os.path.join(cls_path, "Reconsturction")
         self.score_type = args.score_type
 
@@ -60,6 +61,9 @@ class Base_Reconsturct():
 
         return self.image_rocauc, self.pixel_rocauc, self.au_pro
     
+    def get_rec_loss(self):
+        return self.cls_rec_loss
+    
     def visualizae_heatmap(self):
         score_map = self.pixel_preds.reshape(-1, self.image_size, self.image_size)
         gt_mask = np.squeeze(np.array(self.pixel_labels, dtype=np.bool), axis=1)
@@ -77,7 +81,10 @@ class Mean_Reconstruct(Base_Reconsturct):
         fc, fu =  self.model.get_feature(lightings)
         fc_mean = torch.mean(fc, dim=0)
         fc_mean = fc_mean.unsqueeze(0).repeat(6, 1, 1, 1)
-        out =  self.model.reconstruct(fc_mean, fu)
+        out = self.model.reconstruct(fc_mean, fu)
+        loss = self.criteria(lightings, out)
+        self.cls_rec_loss += loss.item()
+
         score_maps = torch.sum(torch.abs(lightings - out), dim=1)
         score_maps = score_maps.unsqueeze(1)
 
@@ -115,10 +122,9 @@ class Reconstruct(Base_Reconsturct):
     
     def predict(self, item, lightings, gt, label):
         lightings = lightings.squeeze().to(self.device)
-        # _, out =  self.model(lightings)
-        _, out, _ =  self.model(lightings)
-        out = self.model.unpatchify(out)
-        print(out.shape)
+        _, out =  self.model(lightings)
+        loss = self.criteria(lightings, out)
+        self.cls_rec_loss += loss.item()
         score_maps = torch.sum(torch.abs(lightings - out), dim=1)
         score_maps = score_maps.unsqueeze(1)
 

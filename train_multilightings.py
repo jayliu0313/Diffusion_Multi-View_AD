@@ -3,19 +3,19 @@ import argparse
 import os
 import os.path as osp
 from tqdm import tqdm
-from core.data import train_lightings_loader
+from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
 from core.models.network import Convolution_AE, Autoencoder
-from core.models.ResNetAE import ResNetAE
-from core.models.unet_model import UNet
-from core.models.mae import mae_vit_base_patch16_dec512d8b
-from utils.pos_embed import interpolate_pos_embed
-from timm.models.layers import trunc_normal_
-import timm.optim.optim_factory as optim_factory
+# from core.models.ResNetAE import ResNetAE
+# from core.models.unet_model import UNet
+# from core.models.mae import mae_vit_base_patch16_dec512d8b
+# from utils.pos_embed import interpolate_pos_embed
+# from timm.models.layers import trunc_normal_
+# import timm.optim.optim_factory as optim_factory
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/cnn_fuseRec_lr00003")
+parser.add_argument('--ckpt_path', default="./checkpoints/cnn_meanRec_lr00003_val")
 parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 # Contrstive Learning
@@ -39,7 +39,7 @@ os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= cuda_idx
 
 data_loader = train_lightings_loader(args)
-
+val_loader = val_lightings_loader(args)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print("current device:", device)
@@ -48,7 +48,7 @@ if not os.path.exists(args.ckpt_path):
     os.makedirs(args.ckpt_path)
 
 contrastive = Contrastive(args)
-
+validate_every = 5  # 每5個epoch進行一次驗證
 
 epoch_loss_list = []
 epoch_contrastive_loss_list = []
@@ -59,7 +59,9 @@ def train_mean_reconsturct(epochs):
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     criterion = torch.nn.MSELoss().to(device)
-    log_file = open(osp.join(args.ckpt_path, "training_log.txt"), "a", 1)
+    train_log_file = open(osp.join(args.ckpt_path, "training_log.txt"), "a", 1)
+    val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
+    best_valid_loss = float('inf')
     total_loss = 0.0
     for epoch in range(epochs):
         epoch_loss = 0.0
@@ -83,24 +85,60 @@ def train_mean_reconsturct(epochs):
             # torch.cuda.empty_cache()
         
         epoch_loss /= len(data_loader)
-        
         epoch_loss_list.append(epoch_loss)
-        
         total_loss += epoch_loss
         
-        if epoch % 50 == 0 and epoch != 0 or epoch == 20:
-            checkpoint = {
-                'model': model.state_dict(),
-                'current_iteration': epoch,
-            }
-            torch.save(checkpoint, os.path.join(args.ckpt_path, 'ckpt_{:0>6d}.pth'.format(epoch)))
-        
-        if log_file is not None:
-            log_file.write('Epoch {}: Loss: {:.6f}\n'.format(epoch, epoch_loss))
         print('Epoch {}: Loss: {:.6f}'.format(epoch, epoch_loss))
 
-    torch.save(checkpoint, os.path.join(args.ckpt_path, 'ckpt_{:0>6d}.pth'.format(epoch)))
-    log_file.close()
+        if epoch % validate_every == 0:
+            model.eval()
+            val_loss = 0.0
+
+            with torch.no_grad():
+                for inputs, labels in val_loader:
+                    lightings = inputs.reshape(-1, 3, args.image_size, args.image_size) 
+                    lightings = lightings.to(device)
+                    fc, fu = model.get_feature(lightings)
+                    fc = fc.reshape(-1, 6, 256, 28, 28)
+                    mean_fc = torch.mean(fc, dim = 1)
+                    fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
+                    fc = fc.reshape(-1, 256, 28, 28)
+                    out = model.reconstruct(fc, fu)
+                    loss = criterion(lightings, out)
+                    val_loss += loss.item()
+
+            epoch_val_loss = val_loss / len(val_loader)
+
+            print(f"Epoch [{epoch}/{epochs}] - "
+                f"Valid Loss: {epoch_val_loss:.6f}")
+            if val_log_file is not None:
+                val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(epoch, epoch_val_loss))
+
+        if epoch % 100 == 0 and epoch != 0:
+            state_dict = {
+                'model': model.state_dict(),
+                'current_iteration': epoch,
+                'optimizer_state_dict': optimizer.state_dict(),
+                'epoch_loss': loss,
+            }
+            torch.save(state_dict, os.path.join(args.ckpt_path, 'ckpt_{:0>6d}.pth'.format(epoch)))
+
+        if epoch_val_loss < best_valid_loss:
+            best_valid_loss = epoch_val_loss
+            best_state_dict =  {
+                'model': model.state_dict(),
+                'current_iteration': epoch,
+                'optimizer_state_dict': optimizer.state_dict(),
+                'epoch_loss': loss,
+            }
+            torch.save(best_state_dict, os.path.join(args.ckpt_path, 'best_model_checkpoint.pth'))
+        
+        if train_log_file is not None:
+            train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(epoch, epoch_loss))
+
+    torch.save(state_dict, os.path.join(args.ckpt_path, 'ckpt_{:0>6d}.pth'.format(epoch)))
+    train_log_file.close()
+    val_log_file.close()
 
 def train_fuse_reconsturct(epochs):
     model = Convolution_AE(args, device)
@@ -155,7 +193,7 @@ def train_fuse_reconsturct(epochs):
 
 
 def main():
-    train_fuse_reconsturct(args.epochs)
+    train_mean_reconsturct(args.epochs)
 main()
 
 

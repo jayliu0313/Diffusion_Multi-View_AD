@@ -1,1 +1,0 @@
-Class: ChocolateCookie reconstruct, Image ROCAUC: 0.965, Pixel ROCAUC: 0.992, AUPRO:  0.960

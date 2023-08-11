@@ -1,1 +1,0 @@
-Class: CandyCane reconstruct, Image ROCAUC: 0.650, Pixel ROCAUC: 0.981, AUPRO:  0.932

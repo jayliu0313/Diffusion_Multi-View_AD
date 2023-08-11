@@ -26,16 +26,23 @@ class Runner():
                 self.method.predict(i, images, gt, label)
 
         image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics()
+        total_rec_loss = self.method.get_rec_loss()
+        rec_mean_loss = total_rec_loss / len(dataloader)
+
         self.method.visualizae_heatmap()
+
         image_rocaucs = dict()
         pixel_rocaucs = dict()
         au_pros = dict()
+        rec_losses = dict()
         image_rocaucs[self.method_name] = round(image_rocauc, 3)
         pixel_rocaucs[self.method_name] = round(pixel_rocauc, 3)
         au_pros[self.method_name] = round(au_pro, 3)
+        rec_losses[self.method_name] = round(rec_mean_loss, 6)
 
         self.log_file.write(
-            f'Class: {self.cls} {self.method_name}, Image ROCAUC: {image_rocauc:.3f}, Pixel ROCAUC: {pixel_rocauc:.3f}, AUPRO:  {au_pro:.3f}'
+            f'Class: {self.cls} {self.method_name}, Image ROCAUC: {image_rocauc:.3f}, Pixel ROCAUC: {pixel_rocauc:.3f}, AUPRO:  {au_pro:.3f}\n'
+            f'Reconstruction Loss: {rec_mean_loss}'
         )
         self.log_file.close()
-        return image_rocaucs, pixel_rocaucs, au_pros
+        return image_rocaucs, pixel_rocaucs, au_pros, rec_losses
