@@ -27,7 +27,7 @@ class Model(torch.nn.Module):
         
         if xyz_backbone_name=='Point_MAE':
             self.xyz_backbone=PointTransformer(group_size=group_size, num_group=num_group)
-            self.xyz_backbone.load_model_from_ckpt("checkpoints/pretrain.pth")
+            self.xyz_backbone.load_model_from_ckpt("/mnt/home_6T/public/jayliu0313/check_point/pointmae_pretrain.pth")
         elif xyz_backbone_name=='Point_Bert':
             self.xyz_backbone=PointTransformer(group_size=group_size, num_group=num_group, encoder_dims=256)
             self.xyz_backbone.load_model_from_pb_ckpt("checkpoints/Point-BERT.pth")
