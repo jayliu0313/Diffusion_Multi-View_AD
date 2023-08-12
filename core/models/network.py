@@ -35,9 +35,9 @@ class Convolution_AE(nn.Module):
         self.image_size = args.image_size
         self.image_chennels = 3
 
-        self.feature_dim = args.common_feature_dim + args.unique_feature_dim
-        self.common_dim = args.common_feature_dim
-        self.unique_dim = args.unique_feature_dim 
+        # self.feature_dim = args.common_feature_dim + args.unique_feature_dim
+        # self.common_dim = args.common_feature_dim
+        # self.unique_dim = args.unique_feature_dim 
 
         self.dconv_down1 = double_conv(3, channel)
         self.dconv_down2 = double_conv(channel, channel * 2)

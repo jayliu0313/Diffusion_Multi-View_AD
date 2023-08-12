@@ -15,7 +15,7 @@ from core.models.network import Convolution_AE #, Autoencoder
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/cnn_meanRec_lr00003_val")
+parser.add_argument('--ckpt_path', default="./checkpoints/cnn_fuseRec_lr00003_val")
 parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
@@ -47,7 +47,7 @@ print("current device:", device)
 if not os.path.exists(args.ckpt_path):
     os.makedirs(args.ckpt_path)
 
-contrastive = Contrastive(args)
+# contrastive = Contrastive(args)
 
 class Train_Conv_Base():
     def __init__(self, args):
@@ -81,9 +81,9 @@ class Train_Conv_Base():
 
     def load_ckpt(self):
         checkpoint = torch.load(args.load_ckpt)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.model.load_state_dict(checkpoint['model'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self.epoch = checkpoint['epoch']
+        self.epoch = checkpoint['current_iteration']
     
     def training(self):
         raise NotImplementedError("parent class nie methods not implemented")
@@ -124,8 +124,8 @@ class Train_Mean_Rec(Train_Conv_Base):
                 self.model.eval()
 
                 with torch.no_grad():
-                    for inputs, labels in val_loader:
-                        lightings = inputs.reshape(-1, 3, args.image_size, args.image_size) 
+                    for lightings, labels in val_loader:
+                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                         lightings = lightings.to(device)
                         fc, fu = self.model.get_feature(lightings)
                         fc = fc.reshape(-1, 6, 256, 28, 28)
@@ -143,14 +143,14 @@ class Train_Mean_Rec(Train_Conv_Base):
             if self.epoch % 100 == 0 and self.epoch != 0:
                 self.save_ckpt(loss, 'ckpt_{:0>6d}.pth'.format(self.epoch))
 
-            if epoch_val_loss < best_valid_loss:
-                best_valid_loss = epoch_val_loss
-                self.save_ckpt(best_valid_loss, "best_ckpt")
+            if epoch_val_loss < self.best_valid_loss:
+                self.best_valid_loss = epoch_val_loss
+                self.save_ckpt(self.best_valid_loss, "best_ckpt.pth")
             
             self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
             self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
 
-        self.save_ckpt(loss, "last_ckpt")
+        self.save_ckpt(loss, "last_ckpt.pth")
         self.train_log_file.close()
         self.val_log_file.close()
 
@@ -165,9 +165,9 @@ class Train_Fuse_Rec(Train_Conv_Base):
             for lightings, label in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
 
-                in_ = lightings.to(device)
-                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                 lightings = lightings.to(device)
+                in_ = lightings
+                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                 fc, fu = self.model.get_feature(lightings)
                 fc = fc.reshape(-1, 6, 256, 28, 28)
                 fu = fu.reshape(-1, 6, 256, 28, 28)
@@ -192,9 +192,10 @@ class Train_Fuse_Rec(Train_Conv_Base):
                 self.model.eval()
 
                 with torch.no_grad():
-                    for inputs, labels in val_loader:
-                        lightings = inputs.reshape(-1, 3, args.image_size, args.image_size) 
+                    for lightings, labels in val_loader:
                         lightings = lightings.to(device)
+                        in_ = lightings
+                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                         fc, fu = self.model.get_feature(lightings)
                         fc = fc.reshape(-1, 6, 256, 28, 28)
                         fu = fu.reshape(-1, 6, 256, 28, 28)
@@ -208,19 +209,19 @@ class Train_Fuse_Rec(Train_Conv_Base):
 
                 epoch_val_loss = epoch_val_loss / len(val_loader)
 
-            print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
-    
+                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
+                self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
+
             if self.epoch % 100 == 0 and self.epoch != 0:
                 self.save_ckpt(loss, 'ckpt_{:0>6d}.pth'.format(self.epoch))
 
-            if epoch_val_loss < best_valid_loss:
-                best_valid_loss = epoch_val_loss
-                self.save_ckpt(best_valid_loss, "best_ckpt")
+            if epoch_val_loss < self.best_valid_loss:
+                self.best_valid_loss = epoch_val_loss
+                self.save_ckpt(self.best_valid_loss, "best_ckpt.pth")
             
-            self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
             self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
 
-        self.save_ckpt(loss, "last_ckpt")
+        self.save_ckpt(loss, "last_ckpt.pth")
         self.train_log_file.close()
         self.val_log_file.close()
 
