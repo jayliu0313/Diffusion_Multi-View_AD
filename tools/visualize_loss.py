@@ -11,7 +11,7 @@ absolute_path = os.path.join(parent_dir, model_path)
 def main():
     #visualize training loss of AE
     input_path = os.path.join(absolute_path, "training_log.txt")
-    save_path = [os.path.join(absolute_path, "loss_info.png"), os.path.join(absolute_path, "Contrastive_loss_info.png"), os.path.join(absolute_path, "mse_loss_info.png")]
+    save_path = os.path.join(absolute_path, "loss_info.png")
     visualize_loss(input_path, save_path) 
 
 def visualize_loss(path, save_path):

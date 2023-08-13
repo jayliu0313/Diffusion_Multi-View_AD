@@ -27,7 +27,7 @@ class Base_Reconsturct():
         self.gts = []
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.criteria = torch.nn.MSELoss()    
-        self.fc_dim = args.common_feature_dim
+        # self.fc_dim = args.common_feature_dim
         
         self.image_size = args.image_size
         
