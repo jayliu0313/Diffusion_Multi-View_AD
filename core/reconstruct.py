@@ -15,7 +15,7 @@ def t2np(tensor):
     return tensor.cpu().data.numpy() if tensor is not None else None
 
 
-class Base_Reconsturct():
+class Base_Reconstruct():
     def __init__(self, args, model, cls_path):
         self.model = model
         self.image_list = list()
@@ -33,7 +33,7 @@ class Base_Reconsturct():
         
         self.cls_path = cls_path
         self.cls_rec_loss = 0.0
-        self.reconstruct_path = os.path.join(cls_path, "Reconsturction")
+        self.reconstruct_path = os.path.join(cls_path, "Reconstruction")
         self.score_type = args.score_type
 
         if not os.path.exists(self.reconstruct_path):
@@ -92,16 +92,16 @@ class Base_Reconsturct():
         return final_map, final_score, img
     
 # test method 1
-class Mean_Reconstruct(Base_Reconsturct):
+class Mean_Reconstruct(Base_Reconstruct):
     def __init__(self, args, model, cls_path):
         super().__init__(args, model, cls_path)
     
     def predict(self, item, lightings, gt, label):
         lightings = lightings.squeeze().to(self.device)
-        fc, fu =  self.model.get_feature(lightings)
+        fc, fu =  self.model.encode(lightings)
         fc_mean = torch.mean(fc, dim=0)
         fc_mean = fc_mean.unsqueeze(0).repeat(6, 1, 1, 1)
-        out = self.model.reconstruct(fc_mean, fu)
+        out = self.model.decode(fc_mean, fu)
         loss = self.criteria(lightings, out)
         self.cls_rec_loss += loss.item()
 
@@ -123,7 +123,7 @@ class Mean_Reconstruct(Base_Reconsturct):
             display_mean_fusion(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
 # test method 2
-class Reconstruct(Base_Reconsturct):
+class Reconstruct(Base_Reconstruct):
     def __init__(self, args, model, cls_path):
         super().__init__(args, model, cls_path)
     

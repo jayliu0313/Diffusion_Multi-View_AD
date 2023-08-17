@@ -1,7 +1,6 @@
 import torch.nn as nn
 from torch.nn.functional import normalize
 import torch
-import timm
 import torchvision.models as models
 
 def double_conv(in_channels, out_channels):
@@ -63,40 +62,11 @@ class Convolution_AE(nn.Module):
         )
        
     def forward(self, lighting):
-        
-        _in = lighting
-        conv1 = self.dconv_down1(_in)
-        x = self.maxpool(conv1)
-        
-        conv2 = self.dconv_down2(x)
-        x = self.maxpool(conv2)
-        
-        conv3 = self.dconv_down3(x)
-        x = self.maxpool(conv3)   
-    
-        x = self.dconv_down4(x)
-
-        fc = self.common_MLP(x)
-        fu = self.unique_MLP(x)
-
-        x = fc + fu
-        
-        x = self.ac(self.fusion(x))
-
-        x = self.upsample(x)        
-        x = self.dconv_up3(x)
-        
-        x = self.upsample(x)          
-        x = self.dconv_up2(x)
-          
-        x = self.upsample(x)
-        x = self.dconv_up1(x)
-        
-        out = self.conv_last(x)
-        
+        fc, fu = self.encode(lighting)
+        out = self.decode(fc, fu)
         return fc, out
 
-    def get_feature(self, lighting):
+    def encode(self, lighting):
         conv1 = self.dconv_down1(lighting.to(self.device))
         x = self.maxpool(conv1)
 
@@ -112,40 +82,8 @@ class Convolution_AE(nn.Module):
         fu = self.unique_MLP(x)
 
         return fc, fu
-    
-    def get_fc(self, lighting):
-        conv1 = self.dconv_down1(lighting.to(self.device))
-        x = self.maxpool(conv1)
 
-        conv2 = self.dconv_down2(x)
-        x = self.maxpool(conv2)
-        
-        conv3 = self.dconv_down3(x)
-        x = self.maxpool(conv3)   
-    
-        x = self.dconv_down4(x)
-        
-        embedded = self.bottleneck1(x)
-        common_feature = self.common_MLP(embedded[:, 0:self.common_dim])
-        return common_feature
-    
-    def get_fu(self, lighting):
-        conv1 = self.dconv_down1(lighting.to(self.device))
-        x = self.maxpool(conv1)
-
-        conv2 = self.dconv_down2(x)
-        x = self.maxpool(conv2)
-        
-        conv3 = self.dconv_down3(x)
-        x = self.maxpool(conv3)   
-    
-        x = self.dconv_down4(x)
-        
-        embedded = self.bottleneck1(x)
-        unique_feature = self.unique_MLP(embedded[:, self.common_dim:])
-        return unique_feature
-    
-    def reconstruct(self, fc, fu):
+    def decode(self, fc, fu):
         cat_feature = fc + fu
             
         x = self.ac(self.fusion(cat_feature))
@@ -162,7 +100,39 @@ class Convolution_AE(nn.Module):
         
         out = self.conv_last(x)
         return out
+     
+    def get_fc(self, lighting):
+        conv1 = self.dconv_down1(lighting.to(self.device))
+        x = self.maxpool(conv1)
+
+        conv2 = self.dconv_down2(x)
+        x = self.maxpool(conv2)
+        
+        conv3 = self.dconv_down3(x)
+        x = self.maxpool(conv3)   
     
+        x = self.dconv_down4(x)
+        
+        fc = self.common_MLP(x)
+        
+        return fc
+    
+    def get_fu(self, lighting):
+        conv1 = self.dconv_down1(lighting.to(self.device))
+        x = self.maxpool(conv1)
+
+        conv2 = self.dconv_down2(x)
+        x = self.maxpool(conv2)
+        
+        conv3 = self.dconv_down3(x)
+        x = self.maxpool(conv3)   
+    
+        x = self.dconv_down4(x)
+        
+        fu = self.unique_MLP(x)
+
+        return fu
+
 # class Autoencoder(nn.Module):
 
 #     def __init__(self, args, device, channel = 32):

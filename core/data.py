@@ -79,12 +79,12 @@ class TestLightings(BaseDataset):
         gt_tot_paths = []
 
         rgb_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_image_*.png")
-        tiff_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*.tiff")
+        depth_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_depth.png")
         normal_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_normals.png")
-        gt_paths = [os.path.join(self.img_path, 'data', str(i).zfill(2)+'_colors_mask.png') for i in range(len(tiff_paths))]
+        gt_paths = [os.path.join(self.img_path, 'data', str(i).zfill(2)+'_colors_mask.png') for i in range(len(depth_paths))]
         
         rgb_paths.sort()
-        tiff_paths.sort()
+        depth_paths.sort()
         normal_paths.sort()
         gt_paths.sort()
         
@@ -96,7 +96,7 @@ class TestLightings(BaseDataset):
                 rgb_lighting_paths.append(rgb_6_paths)
                 rgb_6_paths = []
 
-        sample_paths = list(zip(rgb_lighting_paths, tiff_paths, normal_paths))
+        sample_paths = list(zip(rgb_lighting_paths, depth_paths, normal_paths))
         data_tot_paths.extend(sample_paths)
         gt_tot_paths.extend(gt_paths)
         
@@ -108,14 +108,8 @@ class TestLightings(BaseDataset):
     def __getitem__(self, idx):
         img_path, gt = self.data_paths[idx], self.gt_paths[idx]
         rgb_path = img_path[0]
-        tiff_path = img_path[1]
-
-        organized_pc = read_tiff_organized_pc(tiff_path)
-        pc = resize_organized_pc(organized_pc, target_height=self.size, target_width=self.size)
-        # organized_pc_np = pc.squeeze().permute(1, 2, 0).numpy()
-        # unorganized_pc = organized_pc_to_unorganized_pc(organized_pc=organized_pc_np)
-        # nonzero_indices = np.nonzero(np.all(unorganized_pc != 0, axis=1))[0]
-        # mask = reweight(self.size, nonzero_indices)
+        depth_path = img_path[1]
+        normal_path = img_path[2]
 
         images = []
         for i in range(6):
@@ -142,16 +136,13 @@ class TestLightings(BaseDataset):
         return (images, pc), gt[:1], label
 
 class TrainLightings(Dataset):
-    def __init__(self, img_size=224, dataset_path='datasets/eyecandies_preprocessed'):
+    def __init__(self, img_size=224, dataset_path='datasets/eyecandies_preprocessed', train_type="normal_only"):
         self.size = img_size
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
          transforms.ToTensor(),
-         # transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
         ])
-        # self.augment_trans = transforms.Compose([
-        #     transforms.GaussianBlur((0.1, 2))
-        # ])
+        self.train_type = train_type
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
@@ -159,26 +150,35 @@ class TrainLightings(Dataset):
         data_tot_paths = []
         tot_labels = []
         rgb_paths = []
-        tiff_paths = []
+        depth_paths = []
         normal_paths = []
 
         for cls in eyecandies_classes():
-            rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data', "*_image_*.png")))
-            tiff_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*.tiff"))
-            normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
+            if self.train_type == "normal_only":
+                normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
+                depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_depth.png"))
+            else:
+                rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data', "*_image_*.png")))
+                normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
+                depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_depth.png"))
+        
         rgb_paths.sort()
-        tiff_paths.sort()
-        normal_paths.sort()
-        rgb_lighting_paths = []
-        rgb_6_paths = []
+        normal_paths.sort()     
+        depth_paths.sort()
+     
+        if self.train_type == "normal_only":
+            sample_paths = list(zip(normal_paths, depth_paths))
+        else:
+            rgb_lighting_paths = []
+            rgb_6_paths = []
+            
+            for i in range(len(rgb_paths)):
+                rgb_6_paths.append(rgb_paths[i])
+                if (i + 1) % 6 == 0:
+                    rgb_lighting_paths.append(rgb_6_paths)
+                    rgb_6_paths = []
+            sample_paths = list(zip(rgb_lighting_paths, normal_paths, depth_paths))
         
-        for i in range(len(rgb_paths)):
-            rgb_6_paths.append(rgb_paths[i])
-            if (i + 1) % 6 == 0:
-                rgb_lighting_paths.append(rgb_6_paths)
-                rgb_6_paths = []
-        
-        sample_paths = list(zip(rgb_lighting_paths, tiff_paths, normal_paths))  # 
         data_tot_paths.extend(sample_paths)
         tot_labels.extend([0] * len(sample_paths))
         return data_tot_paths, tot_labels
@@ -188,34 +188,35 @@ class TrainLightings(Dataset):
 
     def __getitem__(self, idx):
         img_path, label = self.data_paths[idx], self.labels[idx]
-        rgb_path = img_path[0]
-        tiff_path = img_path[1]
 
-        # organized_pc = read_tiff_organized_pc(tiff_path)
-        # pc = resize_organized_pc(organized_pc, target_height=self.size, target_width=self.size)
-        # organized_pc_np = pc.squeeze().permute(1, 2, 0).numpy()
-        # unorganized_pc = organized_pc_to_unorganized_pc(organized_pc=organized_pc_np)
-        # nonzero_indices = np.nonzero(np.all(unorganized_pc != 0, axis=1))[0]
-        # # weight = reweight(self.size, nonzero_indices)
-        # pc = pc.clone().detach().float()
-
-        images = []
-        for i in range(6):
-            img = Image.open(rgb_path[i]).convert('RGB')
-            img = self.rgb_transform(img)
-            images.append(img)
-        images = torch.stack(images)
+        if self.train_type == "normal_only":
+            normal_path = img_path[0]
+            depth_path = img_path[1]
+            normal = Image.open(normal_path).convert('RGB')
+            normal = self.rgb_transform(normal)
+            return normal
         
-        return images, label
+        else:
+            rgb_path = img_path[0]
+            images = []
+            for i in range(6):
+                img = Image.open(rgb_path[i]).convert('RGB')
+                img = self.rgb_transform(img)
+                images.append(img)
+            images = torch.stack(images)
+
+            normal_path = img_path[1]
+            depth_path = img_path[2]
+            return images
 
 class ValLightings(Dataset):
-    def __init__(self, img_size=224, dataset_path='datasets/eyecandies'):
+    def __init__(self, img_size=224, dataset_path='datasets/eyecandies', val_type=""):
         self.size = img_size
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
          transforms.ToTensor(),
         ])
-       
+        self.val_type = val_type
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
@@ -223,26 +224,35 @@ class ValLightings(Dataset):
         data_tot_paths = []
         tot_labels = []
         rgb_paths = []
-        tiff_paths = []
+        depth_paths = []
         normal_paths = []
 
         for cls in eyecandies_classes():
-            rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data', "*_image_*.png")))
-            tiff_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*depth.png"))
-            normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
+            if self.val_type == "normal_only":
+                normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
+                depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_depth.png"))
+            else:
+                rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data', "*_image_*.png")))
+                normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
+                depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_depth.png"))
+        
         rgb_paths.sort()
-        tiff_paths.sort()
-        normal_paths.sort()
-        rgb_lighting_paths = []
-        rgb_6_paths = []
+        normal_paths.sort()     
+        depth_paths.sort()
+     
+        if self.val_type == "normal_only":
+            sample_paths = list(zip(normal_paths, depth_paths))
+        else:
+            rgb_lighting_paths = []
+            rgb_6_paths = []
+            
+            for i in range(len(rgb_paths)):
+                rgb_6_paths.append(rgb_paths[i])
+                if (i + 1) % 6 == 0:
+                    rgb_lighting_paths.append(rgb_6_paths)
+                    rgb_6_paths = []
+            sample_paths = list(zip(rgb_lighting_paths, normal_paths, depth_paths))
         
-        for i in range(len(rgb_paths)):
-            rgb_6_paths.append(rgb_paths[i])
-            if (i + 1) % 6 == 0:
-                rgb_lighting_paths.append(rgb_6_paths)
-                rgb_6_paths = []
-        
-        sample_paths = list(zip(rgb_lighting_paths, tiff_paths, normal_paths))  # 
         data_tot_paths.extend(sample_paths)
         tot_labels.extend([0] * len(sample_paths))
         return data_tot_paths, tot_labels
@@ -252,16 +262,26 @@ class ValLightings(Dataset):
 
     def __getitem__(self, idx):
         img_path, label = self.data_paths[idx], self.labels[idx]
-        rgb_path = img_path[0]
-        tiff_path = img_path[1]
-        images = []
-        for i in range(6):
-            img = Image.open(rgb_path[i]).convert('RGB')
-            img = self.rgb_transform(img)
-            images.append(img)
-        images = torch.stack(images)
+
+        if self.val_type == "normal_only":
+            normal_path = img_path[0]
+            depth_path = img_path[1]
+            normal = Image.open(normal_path).convert('RGB')
+            normal = self.rgb_transform(normal)
+            return normal
         
-        return images, label
+        else:
+            rgb_path = img_path[0]
+            images = []
+            for i in range(6):
+                img = Image.open(rgb_path[i]).convert('RGB')
+                img = self.rgb_transform(img)
+                images.append(img)
+            images = torch.stack(images)
+
+            normal_path = img_path[1]
+            depth_path = img_path[2]
+            return images
 
 def test_lightings_loader(args, cls):
     dataset = TestLightings(cls, args.image_size, args.data_path)
@@ -269,49 +289,14 @@ def test_lightings_loader(args, cls):
                               pin_memory=True)
     return data_loader
 
-def train_lightings_loader(args):
-    dataset = TrainLightings(args.image_size, args.data_path)
+def train_lightings_loader(args, train_type="rgb"):
+    dataset = TrainLightings(args.image_size, args.data_path, train_type)
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=True, drop_last=False,
                               pin_memory=True)
     return data_loader
 
-def val_lightings_loader(args):
-    dataset = ValLightings(args.image_size, args.data_path)
+def val_lightings_loader(args, val_type="rgb"):
+    dataset = ValLightings(args.image_size, args.data_path, val_type)
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=False, drop_last=False,
                               pin_memory=True)
     return data_loader
-# def pretrain_data_loader(args):
-#     dataset = PreTrainTensorDataset(args.data_path)
-#     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, drop_last=False,
-#                               pin_memory=True)
-#     return data_loader
-
-# class PreTrainTensorDataset(Dataset):
-#     def __init__(self, root_path):
-#         super().__init__()
-#         self.root_path = root_path
-#         self.all_data_path = self.load_dataset()
-
-#     def load_dataset(self):
-#         data_tot_paths = []
-#         rgb_paths = glob.glob(self.root_path + "/*rgb*")
-#         pc_paths = glob.glob(self.root_path + "/*xyz*")
-#         rgb_paths.sort()
-#         pc_paths.sort()
-#         sample_paths = list(zip(rgb_paths, pc_paths))
-#         data_tot_paths.extend(sample_paths)
-#         return data_tot_paths
-    
-#     def __len__(self):
-#         return len(self.all_data_path)
-
-#     def __getitem__(self, idx):
-#         rgb_tensor_path = self.all_data_path[idx][0]
-#         pc_tensor_path = self.all_data_path[idx][1]
-        
-#         rgb_tensor = torch.load(rgb_tensor_path)
-#         pc_tensor = torch.load(pc_tensor_path)
-        
-#         label = 0
-
-#         return (rgb_tensor, pc_tensor), label

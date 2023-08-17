@@ -6,12 +6,6 @@ from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
 from core.models.network import Convolution_AE #, Autoencoder
-# from core.models.ResNetAE import ResNetAE
-# from core.models.unet_model import UNet
-# from core.models.mae import mae_vit_base_patch16_dec512d8b
-# from utils.pos_embed import interpolate_pos_embed
-# from timm.models.layers import trunc_normal_
-# import timm.optim.optim_factory as optim_factory
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
@@ -21,7 +15,7 @@ parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
 parser.add_argument("--training_mode", default="fuse", help="traing type: fuse or mean")
-parser.add_argument("--load_ckpt", default="checkpoints/cnn_fuseRec_lr00003_val/ckpt_000500.pth")
+parser.add_argument("--load_ckpt", default=None)
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=4)
@@ -95,18 +89,17 @@ class Train_Mean_Rec(Train_Conv_Base):
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
-            epoch_val_loss = 0.0
-            for lightings, label in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+            for lightings in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
 
                 lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                 lightings = lightings.to(device)
-                fc, fu = self.model.get_feature(lightings)
+                fc, fu = self.model.encode(lightings)
                 fc = fc.reshape(-1, 6, 256, 28, 28)
                 mean_fc = torch.mean(fc, dim = 1)
                 fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
                 fc = fc.reshape(-1, 256, 28, 28)
-                out = self.model.reconstruct(fc, fu)
+                out = self.model.decode(fc, fu)
 
                 loss = self.criterion(lightings, out)
                 loss.backward()
@@ -123,31 +116,28 @@ class Train_Mean_Rec(Train_Conv_Base):
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
                 with torch.no_grad():
-                    for lightings, labels in val_loader:
+                    epoch_val_loss = 0.0
+                    for lightings in val_loader:
                         lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                         lightings = lightings.to(device)
-                        fc, fu = self.model.get_feature(lightings)
+                        fc, fu = self.model.encode(lightings)
                         fc = fc.reshape(-1, 6, 256, 28, 28)
                         mean_fc = torch.mean(fc, dim = 1)
                         fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
                         fc = fc.reshape(-1, 256, 28, 28)
-                        out = self.model.reconstruct(fc, fu)
+                        out = self.model.decode(fc, fu)
                         loss = self.criterion(lightings, out)
                         epoch_val_loss += loss.item()
-
+                    
                 epoch_val_loss = epoch_val_loss / len(val_loader)
+                if epoch_val_loss < self.best_val_loss:
+                    self.best_val_loss = epoch_val_loss
+                    self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
+                    print("Save the best checkpoint")
 
-            print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
-    
-            if self.epoch % 100 == 0 and self.epoch != 0:
-                self.save_ckpt(epoch_loss, 'ckpt_{:0>6d}.pth'.format(self.epoch))
+                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
+                self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
 
-            if epoch_val_loss < self.best_val_loss:
-                self.best_val_loss = epoch_val_loss
-                self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
-                print("Save the best checkpoint")
-
-            self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
             self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
 
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
@@ -161,21 +151,21 @@ class Train_Fuse_Rec(Train_Conv_Base):
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
-            epoch_val_loss = 0.0
-            for lightings, label in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+           
+            for lightings in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
                 
                 lightings = lightings.to(device)
                 in_ = lightings
                 lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
-                fc, fu = self.model.get_feature(lightings)
+                fc, fu = self.model.encode(lightings)
                 fc = fc.reshape(-1, 6, 256, 28, 28)
                 fu = fu.reshape(-1, 6, 256, 28, 28)
             
                 loss = 0
                 for i in range(6):
                     for j in range(6):
-                        out = self.model.reconstruct(fc[:, i, :, :, :], fu[:, j, :, :, :])
+                        out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
                         loss += self.criterion(in_[:, j, :, :, :], out)
         
                 loss.backward()
@@ -190,20 +180,20 @@ class Train_Fuse_Rec(Train_Conv_Base):
 
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
-
+                epoch_val_loss = 0.0
                 with torch.no_grad():
-                    for lightings, labels in val_loader:
+                    for lightings in val_loader:
                         lightings = lightings.to(device)
                         in_ = lightings
                         lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
-                        fc, fu = self.model.get_feature(lightings)
+                        fc, fu = self.model.encode(lightings)
                         fc = fc.reshape(-1, 6, 256, 28, 28)
                         fu = fu.reshape(-1, 6, 256, 28, 28)
                     
                         loss = 0
                         for i in range(6):
                             for j in range(6):
-                                out = self.model.reconstruct(fc[:, i, :, :, :], fu[:, j, :, :, :])
+                                out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
                                 loss += self.criterion(in_[:, j, :, :, :], out)
                         epoch_val_loss += (loss.item() / 36)
 
@@ -212,14 +202,11 @@ class Train_Fuse_Rec(Train_Conv_Base):
                 print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
                 self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
 
-            if self.epoch % 100 == 0 and self.epoch != 0:
-                self.save_ckpt(epoch_loss, 'ckpt_{:0>6d}.pth'.format(self.epoch))
+                if epoch_val_loss < self.best_val_loss:
+                    self.best_val_loss = epoch_val_loss
+                    self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
+                    print("Save the best checkpoint")
 
-            if epoch_val_loss < self.best_val_loss:
-                self.best_val_loss = epoch_val_loss
-                self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
-                print("Save the best checkpoint")
-            
             self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
 
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
