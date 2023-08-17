@@ -60,7 +60,7 @@ class Normal_AE(nn.Module):
         return x
     
     def decode(self, x):
-      
+     
         x = self.upsample(x)        
         
         x = self.dconv_up3(x)

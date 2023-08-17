@@ -148,3 +148,26 @@ class Reconstruct(Base_Reconstruct):
 
         if item % 5 == 0:
             display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
+
+
+# test method 3
+class Normal_Reconstruct(Base_Reconstruct):
+    def __init__(self, args, model, cls_path):
+        super().__init__(args, model, cls_path)
+    
+    def predict(self, item, normal, gt, label):
+        normal = normal.to(self.device)
+        out = self.model(normal)
+        loss = self.criteria(normal, out)
+        self.cls_rec_loss += loss.item()
+        score_map = torch.sum(torch.abs(normal - out), dim=1)
+        topk_score, _ = torch.topk(score_map.flatten(), 20)
+        final_score = torch.mean(topk_score)
+        self.image_labels.append(label)
+        self.image_preds.append(t2np(final_score))
+        self.image_list.append(t2np(normal.squeeze()))
+        self.pixel_preds.append(t2np(score_map.squeeze()))
+        self.pixel_labels.extend(t2np(gt))
+
+        if item % 5 == 0:
+            display_one_img(t2np(normal.squeeze()), t2np(out.squeeze()), self.reconstruct_path, item)

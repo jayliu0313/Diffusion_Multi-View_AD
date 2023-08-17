@@ -79,13 +79,13 @@ class TestLightings(BaseDataset):
         gt_tot_paths = []
 
         rgb_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_image_*.png")
-        depth_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_depth.png")
         normal_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_normals.png")
-        gt_paths = [os.path.join(self.img_path, 'data', str(i).zfill(2)+'_colors_mask.png') for i in range(len(depth_paths))]
+        depth_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_depth.png")
+        gt_paths = [os.path.join(self.img_path, 'data', str(i).zfill(2)+'_mask.png') for i in range(len(depth_paths))]
         
         rgb_paths.sort()
-        depth_paths.sort()
         normal_paths.sort()
+        depth_paths.sort()
         gt_paths.sort()
         
         rgb_lighting_paths = []
@@ -96,7 +96,7 @@ class TestLightings(BaseDataset):
                 rgb_lighting_paths.append(rgb_6_paths)
                 rgb_6_paths = []
 
-        sample_paths = list(zip(rgb_lighting_paths, depth_paths, normal_paths))
+        sample_paths = list(zip(rgb_lighting_paths, normal_paths, depth_paths))
         data_tot_paths.extend(sample_paths)
         gt_tot_paths.extend(gt_paths)
         
@@ -108,9 +108,10 @@ class TestLightings(BaseDataset):
     def __getitem__(self, idx):
         img_path, gt = self.data_paths[idx], self.gt_paths[idx]
         rgb_path = img_path[0]
-        depth_path = img_path[1]
-        normal_path = img_path[2]
+        normal_path = img_path[1]
 
+        normal = Image.open(normal_path).convert('RGB')
+        normal = self.rgb_transform(normal)
         images = []
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
@@ -119,9 +120,6 @@ class TestLightings(BaseDataset):
             # img = img * mask
             images.append(img)
         images = torch.stack(images)
-        # images = gauss_noise_tensor(images)
-        # images = self.augment_trans(images)
-        pc = pc.clone().detach().float()
 
         gt = Image.open(gt).convert('L')
         if np.any(gt):
@@ -133,7 +131,7 @@ class TestLightings(BaseDataset):
             gt = torch.where(gt > 0.5, 1., .0)
             label = 0
 
-        return (images, pc), gt[:1], label
+        return (images, normal), gt[:1], label
 
 class TrainLightings(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies_preprocessed', train_type="normal_only"):

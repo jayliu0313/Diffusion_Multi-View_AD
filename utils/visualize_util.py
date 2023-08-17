@@ -249,6 +249,25 @@ def display_mean_fusion(images, reconsturct_imgs, cls_path, item):
     
     plt.savefig(save_path)
     plt.close()   
+    
+def display_one_img(img, rec, cls_path, item):
+    save_path = os.path.join(cls_path, str(item) + "_normal.png")
+
+    fig = plt.figure(figsize=(12, 5))
+    img = denormalization(img)
+    fig.add_subplot(2, 1, 1)
+    plt.imshow(img, cmap='gray')
+    plt.axis("off")
+    plt.title('Testing Image', fontsize = 15)
+
+    target = denormalization(rec)
+    fig.add_subplot(2, 1, 2)
+    plt.imshow(target, cmap='gray')
+    plt.axis("off")
+    plt.title('Reconstruct Testing Image', fontsize = 15)
+
+    plt.savefig(save_path)
+    plt.close()
 
 
 """

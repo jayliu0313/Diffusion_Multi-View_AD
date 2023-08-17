@@ -1,5 +1,5 @@
 from core.data import test_lightings_loader
-from core.reconstruct import Mean_Reconstruct, Reconstruct
+from core.reconstruct import Mean_Reconstruct, Reconstruct, Normal_Reconstruct
 import torch
 import os
 import os.path as osp
@@ -11,10 +11,14 @@ class Runner():
             os.makedirs(cls_path)
 
         self.args = args
-        if args.method_name == "mean_reconstruct":
+        if args.method_name == "mean_rec":
             self.method = Mean_Reconstruct(args, model, cls_path)
-        else:
+        elif args.method_name == "rec":
             self.method = Reconstruct(args, model, cls_path)
+        elif args.method_name == "nmap_rec":
+            self.method = Normal_Reconstruct(args, model, cls_path)
+        else:
+            return TypeError
         self.cls = cls
         self.log_file = open(osp.join(cls_path, "class_score.txt"), "a", 1)
         self.method_name = args.method_name
@@ -22,8 +26,11 @@ class Runner():
     def evaluate(self):
         dataloader = test_lightings_loader(self.args, self.cls)
         with torch.no_grad():
-            for i, ((images, pc), gt, label) in enumerate(dataloader):
-                self.method.predict(i, images, gt, label)
+            for i, ((images, normal), gt, label) in enumerate(dataloader):
+                if self.method_name == "nmap_rec":
+                    self.method.predict(i, normal, gt, label)
+                else:
+                    self.method.predict(i, images, gt, label)
 
         image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics()
         total_rec_loss = self.method.get_rec_loss()

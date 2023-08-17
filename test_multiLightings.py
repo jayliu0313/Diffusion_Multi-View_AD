@@ -6,6 +6,7 @@ import os.path as osp
 import datetime
 
 from core.models.network import Convolution_AE#, Autoencoder
+from core.models.normal_network import Normal_AE
 # from core.models.unet_model import UNet
 # from core.models.mae import mae_vit_base_patch16_dec512d8b
 from core.runner import Runner
@@ -14,10 +15,10 @@ import pandas as pd
 
 parser = argparse.ArgumentParser(description='test')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/test/best_ckpt.pth")
+parser.add_argument('--ckpt_path', default="checkpoints/Normal_Rec/best_ckpt.pth")
 parser.add_argument('--output_dir', default="./output")
 parser.add_argument('--dataset_type', default="eyecandies")
-parser.add_argument('--method_name', default="mean_reconstruct", help="mean_reconstruct, reconstruct")
+parser.add_argument('--method_name', default="nmap_rec", help="mean_rec, rec, nmap_rec")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score")
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--image_size', default=224, type=int)
@@ -56,7 +57,10 @@ def run_eyecandies(args):
 
     # build model and load ckpt
     # model = Autoencoder(args, device).to(device)
-    model = Convolution_AE(args, device)
+    if args.method_name == "nmap_rec":
+        model = Normal_AE(args, device)
+    else:
+        model = Convolution_AE(args, device)
     model.to(device)
     model.eval()
     checkpoint = torch.load(args.ckpt_path, map_location=device)
