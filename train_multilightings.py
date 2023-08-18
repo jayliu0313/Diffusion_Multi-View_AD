@@ -5,7 +5,7 @@ import os.path as osp
 from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
-from core.models.network import Convolution_AE #, Autoencoder
+from core.models.rgb_network import Convolution_AE #, Autoencoder
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
@@ -57,7 +57,7 @@ class Train_Conv_Base():
         # self.epoch_contrastive_loss_list = []
         # self.epoch_mse_loss_list = []
 
-        self.model = Convolution_AE(args, device)
+        self.model = Convolution_AE(device)
         self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
         self.criterion = torch.nn.MSELoss().to(device)

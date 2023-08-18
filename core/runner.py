@@ -26,9 +26,9 @@ class Runner():
     def evaluate(self):
         dataloader = test_lightings_loader(self.args, self.cls)
         with torch.no_grad():
-            for i, ((images, normal), gt, label) in enumerate(dataloader):
+            for i, ((images, nmap), gt, label) in enumerate(dataloader):
                 if self.method_name == "nmap_rec":
-                    self.method.predict(i, normal, gt, label)
+                    self.method.predict(i, nmap, gt, label)
                 else:
                     self.method.predict(i, images, gt, label)
 
