@@ -205,7 +205,9 @@ class TrainLightings(Dataset):
 
             normal_path = img_path[1]
             depth_path = img_path[2]
-            return images
+            normal = Image.open(normal_path).convert('RGB')
+            nmap = self.rgb_transform(normal)
+            return images, nmap
 
 class ValLightings(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies', val_type=""):
@@ -265,8 +267,8 @@ class ValLightings(Dataset):
             normal_path = img_path[0]
             depth_path = img_path[1]
             normal = Image.open(normal_path).convert('RGB')
-            normal = self.rgb_transform(normal)
-            return normal
+            nmap = self.rgb_transform(normal)
+            return nmap
         
         else:
             rgb_path = img_path[0]
@@ -279,7 +281,9 @@ class ValLightings(Dataset):
 
             normal_path = img_path[1]
             depth_path = img_path[2]
-            return images
+            normal = Image.open(normal_path).convert('RGB')
+            nmap = self.rgb_transform(normal)
+            return images, nmap
 
 def test_lightings_loader(args, cls):
     dataset = TestLightings(cls, args.image_size, args.data_path)

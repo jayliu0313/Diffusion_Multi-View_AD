@@ -89,7 +89,7 @@ class Train_Mean_Rec(Train_Conv_Base):
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
-            for lightings in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+            for lightings,_ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
 
                 lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 

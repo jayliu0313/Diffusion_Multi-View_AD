@@ -25,7 +25,7 @@ parser.add_argument("--epochs", default=700)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 
 # Contrstive Learning
-parser.add_argument("--contrastive_w", default=0.001)
+parser.add_argument("--contrastive_w", default=1)
 parser.add_argument("--temperature_f", default=0.5)
 parser.add_argument("--temperature_l", default=1.0)
 
@@ -34,8 +34,8 @@ cuda_idx = str(args.CUDA)
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= cuda_idx
 
-data_loader = train_lightings_loader(args, train_type="normal_only")
-val_loader = val_lightings_loader(args, val_type="normal_only")
+data_loader = train_lightings_loader(args)
+val_loader = val_lightings_loader(args)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print("current device:", device)
@@ -52,7 +52,7 @@ class Train_Fusion():
         self.best_val_loss = float('inf')
         self.epochs = args.epochs
         self.epoch = 0
-        self.image_size = args.image_size
+        self.img_size = args.image_size
         self.total_loss = 0.0
         self.val_every = 5  # every 5 epoch to check validation
         # load rgb extractor
@@ -70,7 +70,11 @@ class Train_Fusion():
         self.model = FeatureFusion(args, 256, 256, device)
         self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
-        self.criterion = torch.nn.MSELoss().to(device)
+
+        self.contrastive = Contrastive(args)
+
+        self.features = []
+
         if args.load_fuse_ckpt is not None:
             self.load_ckpt()
     
@@ -90,10 +94,11 @@ class Train_Fusion():
         self.epoch = checkpoint['current_iteration']
     
     def extract_feature(self, lightings, nmap):
-        lightings = lightings.reshape(-1, 3, self.img_size, self.img_size) 
-        six_fc = self.rgb_extract.get_fc(lightings)
-        rgb_feature = self.rgb_extract.get_mean_fc(six_fc)
-        nmap_feature = self.nmap_extract.encode(nmap)
+        with torch.no_grad():
+            lightings = lightings.reshape(-1, 3, self.img_size, self.img_size) 
+            six_fc = self.rgb_extract.get_fc(lightings)
+            rgb_feature = self.rgb_extract.get_mean_fc(six_fc)
+            nmap_feature = self.nmap_extract.encode(nmap)
         return rgb_feature, nmap_feature
 
     def training(self):
@@ -101,49 +106,46 @@ class Train_Fusion():
             epoch_loss = 0.0
             for lightings, nmap in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
-                lightings = lightings.to(device)
-                nmap = nmap.to(device)
-                
+
                 rgb_feature, nmap_feature = self.extract_feature(lightings, nmap)
+                # rgb_feature, nmap_feature = self.model(rgb_feature.to(device), nmap_feature.to(device))
+                loss = self.contrastive.loss(rgb_feature.to(device), nmap_feature.to(device))
+                print(loss.item())
+        #         loss.backward()
                 
-                self.model(rgb_feature, nmap_feature)
-#                 loss = self.criterion(normal, out)
-#                 loss.backward()
+        #         self.optimizer.step()
+        #         epoch_loss += loss.item()
                 
-#                 self.optimizer.step()
-#                 epoch_loss += loss.item()
-                
-#             epoch_loss /= len(data_loader)
-#             self.total_loss += epoch_loss
+        #     epoch_loss /= len(data_loader)
+        #     self.total_loss += epoch_loss
             
-#             print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
+        #     print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
 
-#             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
-#                 self.model.eval()
-#                 epoch_val_loss = 0.0
-#                 with torch.no_grad():
-#                     for normal in val_loader:
-#                         normal = normal.to(device)
-#                         out = self.model(normal)
-#                         loss = self.criterion(normal, out)
-                    
-#                         epoch_val_loss += loss.item()
+        #     if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
+        #         self.model.eval()
+        #         epoch_val_loss = 0.0
+        #         with torch.no_grad():
+        #             for lightings, nmap in val_loader:
+        #                 rgb_feature, nmap_feature = self.extract_feature(lightings.to(device), nmap.to(device))
+        #                 rgb_feature, nmap_feature = self.model(rgb_feature.to(device), nmap_feature.to(device))
+        #                 loss = self.contrastive.loss(rgb_feature, nmap_feature)
+        #                 epoch_val_loss += loss.item()
 
-#                 epoch_val_loss = epoch_val_loss / len(val_loader)
+        #         epoch_val_loss = epoch_val_loss / len(val_loader)
 
-#                 if epoch_val_loss < self.best_val_loss:
-#                     self.best_val_loss = epoch_val_loss
-#                     self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
-#                     print("Save the best checkpoint")
+        #         if epoch_val_loss < self.best_val_loss:
+        #             self.best_val_loss = epoch_val_loss
+        #             self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
+        #             print("Save the best checkpoint")
                 
-#                 print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
-#                 self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
+        #         print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
+        #         self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
 
-#             self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
+        #     self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
 
-#         self.save_ckpt(epoch_loss, "last_ckpt.pth")
-#         self.train_log_file.close()
-#         self.val_log_file.close()
+        # self.save_ckpt(epoch_loss, "last_ckpt.pth")
+        # self.train_log_file.close()
+        # self.val_log_file.close()
     
 
 

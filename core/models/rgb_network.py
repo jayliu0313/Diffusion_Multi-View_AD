@@ -107,7 +107,6 @@ class Convolution_AE(nn.Module):
     def get_mean_fc(self, six_fc):
         fc = six_fc.reshape(-1, 6, 256, 28, 28)
         mean_fc = torch.mean(fc, dim = 1)
-        mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
         mean_fc = mean_fc.reshape(-1, 256, 28, 28)
         return mean_fc
     
