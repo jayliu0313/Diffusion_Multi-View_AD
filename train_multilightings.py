@@ -10,12 +10,12 @@ from core.models.rgb_network import Convolution_AE #, Autoencoder
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
 parser.add_argument('--ckpt_path', default="./checkpoints/test")
-parser.add_argument('--batch_size', default=8, type=int)
+parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
-parser.add_argument("--training_mode", default="fuse", help="traing type: fuse or mean")
-parser.add_argument("--load_ckpt", default=None)
+parser.add_argument("--training_mode", default="fuse_both", help="traing type: fuse_fc or fuse_both or mean")
+parser.add_argument("--load_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/mil_test/cnn_fuseRec_finetune/best_ckpt.pth")
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=4)
@@ -52,7 +52,8 @@ class Train_Conv_Base():
         self.epoch = 0
         self.image_size = args.image_size
         self.total_loss = 0.0
-        self.val_every = 1  # every 5 epoch to check validation
+        self.val_every = 5  # every 5 epoch to check validation
+        self.batch_size = args.batch_size
         # self.epoch_loss_list = []
         # self.epoch_contrastive_loss_list = []
         # self.epoch_mse_loss_list = []
@@ -78,7 +79,7 @@ class Train_Conv_Base():
         self.model.load_state_dict(checkpoint['model'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epoch = checkpoint['current_iteration']
-    
+        print("Load ckpt from: ", args.load_ckpt)
     def training(self):
         raise NotImplementedError("parent class nie methods not implemented")
     
@@ -144,7 +145,7 @@ class Train_Mean_Rec(Train_Conv_Base):
         self.train_log_file.close()
         self.val_log_file.close()
 
-class Train_Fuse_Rec(Train_Conv_Base):
+class Train_Fuse_fc_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
 
@@ -213,12 +214,94 @@ class Train_Fuse_Rec(Train_Conv_Base):
         self.train_log_file.close()
         self.val_log_file.close()
 
+class Train_Fuse_Both_Rec(Train_Conv_Base):
+    def __init__(self, args):
+        super().__init__(args)
+
+    def training(self):
+        for self.epoch in range(self.epochs):
+            epoch_loss = 0.0
+           
+            for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+                self.optimizer.zero_grad()
+                
+                lightings = lightings.to(device)
+                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
+                fc, fu = self.model.encode(lightings)
+                
+                # random fc by lightings
+                fc = fc.reshape(-1, 6, 256, 28, 28)
+                random_indices = torch.randperm(6)
+                fc = fc[:, random_indices, :, :]
+                fc = fc.reshape(-1, 256, 28, 28)
+
+                # random fu by batch 
+                fu = fu.reshape(-1, 6, 256, 28, 28)
+                random_indices = torch.randperm(fu.shape[0])
+                fu = fu[random_indices]
+                fu = fu.reshape(-1, 256, 28, 28)
+
+                out = self.model.decode(fc, fu)
+
+        
+                loss = self.criterion(lightings, out)
+
+                
+                loss.backward()
+              
+                self.optimizer.step()
+                epoch_loss += loss.item()
+                
+            epoch_loss /= len(data_loader)
+            self.total_loss += epoch_loss
+            
+            print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
+
+            if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
+                self.model.eval()
+                epoch_val_loss = 0.0
+                with torch.no_grad():
+                    for lightings, _ in val_loader:
+                        lightings = lightings.to(device)
+                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
+                        fc, fu = self.model.encode(lightings)
+                        
+                        random_indices = torch.randperm(6)
+                        fc = fc.reshape(-1, 6, 256, 28, 28)
+                        fc = fc[:, random_indices, :, :]
+                        fc = fc.reshape(-1, 256, 28, 28)
+                        
+                        fu = fu.reshape(-1, 6, 256, 28, 28)
+                        random_indices = torch.randperm(fu.shape[0])
+                        fu = fu[random_indices]
+                        fu = fu.reshape(-1, 256, 28, 28)
+                        out = self.model.decode(fc, fu)
+                        epoch_val_loss += loss.item()
+
+                epoch_val_loss = epoch_val_loss / len(val_loader)
+
+                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
+                self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
+
+                if epoch_val_loss < self.best_val_loss:
+                    self.best_val_loss = epoch_val_loss
+                    self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
+                    print("Save the best checkpoint")
+
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
+
+        self.save_ckpt(epoch_loss, "last_ckpt.pth")
+        self.train_log_file.close()
+        self.val_log_file.close()
+
 
 if __name__ == '__main__':
     if args.training_mode == "mean":
         runner = Train_Mean_Rec(args)
-    elif args.training_mode == "fuse":
-        runner = Train_Fuse_Rec(args)
+    elif args.training_mode == "fuse_fc":
+        runner = Train_Fuse_fc_Rec(args)
+    elif args.training_mode == "fuse_both":
+        runner = Train_Fuse_Both_Rec(args)
     runner.training()
 
 

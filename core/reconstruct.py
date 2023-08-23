@@ -119,8 +119,8 @@ class Mean_Reconstruct(Base_Reconstruct):
         self.pixel_preds.append(t2np(final_map))
         self.pixel_labels.extend(t2np(gt))
 
-        if item % 5 == 0:
-            display_mean_fusion(t2np(lightings), t2np(out), self.reconstruct_path, item)
+       
+        display_mean_fusion(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
 # test method 2
 class Reconstruct(Base_Reconstruct):
@@ -169,5 +169,5 @@ class Normal_Reconstruct(Base_Reconstruct):
         self.pixel_preds.append(t2np(score_map.squeeze()))
         self.pixel_labels.extend(t2np(gt))
 
-        if item % 5 == 0:
-            display_one_img(t2np(normal.squeeze()), t2np(out.squeeze()), self.reconstruct_path, item)
+        # if item % 5 == 0:
+        display_one_img(t2np(normal.squeeze()), t2np(out.squeeze()), self.reconstruct_path, item)
