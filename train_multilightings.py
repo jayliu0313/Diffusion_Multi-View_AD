@@ -5,17 +5,17 @@ import os.path as osp
 from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
-from core.models.rgb_network import Convolution_AE #, Autoencoder
+from core.models.rgb_network import Convolution_AE, Convolution_AE_v2
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/test")
+parser.add_argument('--ckpt_path', default="./checkpoints/test2")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
 parser.add_argument("--training_mode", default="fuse_both", help="traing type: fuse_fc or fuse_both or mean")
-parser.add_argument("--load_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/mil_test/cnn_fuseRec_finetune/best_ckpt.pth")
+parser.add_argument("--load_ckpt", default=None)
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=4)
@@ -54,11 +54,8 @@ class Train_Conv_Base():
         self.total_loss = 0.0
         self.val_every = 5  # every 5 epoch to check validation
         self.batch_size = args.batch_size
-        # self.epoch_loss_list = []
-        # self.epoch_contrastive_loss_list = []
-        # self.epoch_mse_loss_list = []
 
-        self.model = Convolution_AE(device)
+        self.model = Convolution_AE_v2(device)
         self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
         self.criterion = torch.nn.MSELoss().to(device)
@@ -80,6 +77,7 @@ class Train_Conv_Base():
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.epoch = checkpoint['current_iteration']
         print("Load ckpt from: ", args.load_ckpt)
+
     def training(self):
         raise NotImplementedError("parent class nie methods not implemented")
     
@@ -265,16 +263,6 @@ class Train_Fuse_Both_Rec(Train_Conv_Base):
                         lightings = lightings.to(device)
                         lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                         fc, fu = self.model.encode(lightings)
-                        
-                        random_indices = torch.randperm(6)
-                        fc = fc.reshape(-1, 6, 256, 28, 28)
-                        fc = fc[:, random_indices, :, :]
-                        fc = fc.reshape(-1, 256, 28, 28)
-                        
-                        fu = fu.reshape(-1, 6, 256, 28, 28)
-                        random_indices = torch.randperm(fu.shape[0])
-                        fu = fu[random_indices]
-                        fu = fu.reshape(-1, 256, 28, 28)
                         out = self.model.decode(fc, fu)
                         epoch_val_loss += loss.item()
 

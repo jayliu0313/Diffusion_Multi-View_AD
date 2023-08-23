@@ -103,7 +103,7 @@ def run_eyecandies(args):
     result_file.write(f'AU PRO Results \n\n{au_pros_df.to_markdown(index=False)} \n\n')
 
     print("\n\n##########################################################################")
-    print("############################# AU PRO Results #############################")
+    print("############################# MSE Loss Results #############################")
     print("##########################################################################\n")
     print(rec_loss_df.to_markdown(index=False))
     result_file.write(f'Reconstruction Loss Results \n\n{rec_loss_df.to_markdown(index=False)}')
