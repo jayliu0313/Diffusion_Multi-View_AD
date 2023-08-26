@@ -6,15 +6,16 @@ from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
 from core.models.rgb_network import Convolution_AE, Convolution_AE_v2
+from core.loss import CosineSimilarityLoss
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/test2")
+parser.add_argument('--ckpt_path', default="./checkpoints/test3")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
-parser.add_argument("--training_mode", default="fuse_both", help="traing type: fuse_fc or fuse_both or mean")
+parser.add_argument("--training_mode", default="memory", help="traing type: fuse_fc, fuse_both, mean")
 parser.add_argument("--load_ckpt", default=None)
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
@@ -215,7 +216,7 @@ class Train_Fuse_fc_Rec(Train_Conv_Base):
 class Train_Fuse_Both_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-
+        self.loss_cos = CosineSimilarityLoss()
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
@@ -227,17 +228,22 @@ class Train_Fuse_Both_Rec(Train_Conv_Base):
                 lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                 fc, fu = self.model.encode(lightings)
                 
+                _, D, W, H = fc.shape
                 # random fc by lightings
-                fc = fc.reshape(-1, 6, 256, 28, 28)
+                fc = fc.reshape(-1, 6, D, W, H)
+                loss_fc = self.loss_cos(fc)
+                print(loss_fc)
                 random_indices = torch.randperm(6)
                 fc = fc[:, random_indices, :, :]
-                fc = fc.reshape(-1, 256, 28, 28)
+                fc = fc.reshape(-1, D, W, H)
 
                 # random fu by batch 
-                fu = fu.reshape(-1, 6, 256, 28, 28)
+                fu = fu.reshape(-1, 6, D, W, H)
+                loss_fu = torch.var(fu, dim=0)
+                print(loss_fu.shape)
                 random_indices = torch.randperm(fu.shape[0])
                 fu = fu[random_indices]
-                fu = fu.reshape(-1, 256, 28, 28)
+                fu = fu.reshape(-1, D, W, H)
 
                 out = self.model.decode(fc, fu)
 

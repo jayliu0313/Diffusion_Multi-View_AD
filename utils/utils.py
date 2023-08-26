@@ -9,6 +9,10 @@ def set_seeds(seed: int = 0) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
 
+def t2np(tensor):
+    '''pytorch tensor -> numpy array'''
+    return tensor.cpu().data.numpy() if tensor is not None else None
+
 class KNNGaussianBlur(torch.nn.Module):
     def __init__(self, radius : int = 4):
         super().__init__()

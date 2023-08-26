@@ -1,32 +1,44 @@
 from core.data import test_lightings_loader
-from core.reconstruct import Mean_Reconstruct, Reconstruct, Normal_Reconstruct
+from core.reconstruct_method import Mean_Reconstruct, Reconstruct, Normal_Reconstruct
+from core.memory_method import Memory_Method
+from tqdm import tqdm
 import torch
 import os
 import os.path as osp
 
 class Runner():
-    def __init__(self, args, model, cls):
+    def __init__(self, args, cls):
         cls_path = os.path.join(args.output_dir, cls)
         if not os.path.exists(cls_path):
             os.makedirs(cls_path)
 
         self.args = args
         if args.method_name == "mean_rec":
-            self.method = Mean_Reconstruct(args, model, cls_path)
+            self.method = Mean_Reconstruct(args, cls_path)
         elif args.method_name == "rec":
-            self.method = Reconstruct(args, model, cls_path)
+            self.method = Reconstruct(args, cls_path)
         elif args.method_name == "nmap_rec":
-            self.method = Normal_Reconstruct(args, model, cls_path)
+            self.method = Normal_Reconstruct(args, cls_path)
+        elif args.method_name == "memory":
+            self.method = Memory_Method(args, cls_path)
         else:
             return TypeError
         self.cls = cls
         self.log_file = open(osp.join(cls_path, "class_score.txt"), "a", 1)
         self.method_name = args.method_name
-        
-    def evaluate(self):
-        dataloader = test_lightings_loader(self.args, self.cls)
+    
+    def fit(self):
+        dataloader = test_lightings_loader(self.args, self.cls, "memory")
         with torch.no_grad():
-            for i, ((images, nmap), gt, label) in enumerate(dataloader):
+            for i, (lightings, _) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
+                self.method.add_sample_to_mem_bank(lightings)
+      
+        self.method.run_coreset()
+
+    def evaluate(self):
+        dataloader = test_lightings_loader(self.args, self.cls, "test")
+        with torch.no_grad():
+            for i, ((images, nmap), gt, label) in enumerate(tqdm(dataloader)):
                 if self.method_name == "nmap_rec":
                     self.method.predict(i, nmap, gt, label)
                 else:

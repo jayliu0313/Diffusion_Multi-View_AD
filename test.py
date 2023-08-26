@@ -3,9 +3,6 @@ import argparse
 import os
 import os.path as osp
 import datetime
-
-from core.models.rgb_network import Convolution_AE
-from core.models.nmap_network import NMap_AE
 # from core.models.unet_model import UNet
 from core.runner import Runner
 import datetime
@@ -13,10 +10,10 @@ import pandas as pd
 
 parser = argparse.ArgumentParser(description='test')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/test/best_ckpt.pth")
+parser.add_argument('--ckpt_path', default="/mnt/home_6T/public/jayliu0313/check_point/mil_test/cnn_fuseRec_finetune/best_ckpt.pth")
 parser.add_argument('--output_dir', default="./output")
 parser.add_argument('--dataset_type', default="eyecandies")
-parser.add_argument('--method_name', default="mean_rec", help="mean_rec, rec, nmap_rec")
+parser.add_argument('--method_name', default="memory", help="mean_rec, rec, nmap_rec, memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score")
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--image_size', default=224, type=int)
@@ -51,26 +48,15 @@ def run_eyecandies(args):
     elif args.dataset_type=='mvtec3d':
         classes = []
 
-    result_file = open(osp.join(args.output_dir, "results.txt"), "a", 1)
-
-    # build model and load ckpt
-    # model = Autoencoder(args, device).to(device)
-    if args.method_name == "nmap_rec":
-        model = NMap_AE(device)
-    else:
-        model = Convolution_AE(device)
-    model.to(device)
-    model.eval()
-    checkpoint = torch.load(args.ckpt_path, map_location=device)
-    model.load_state_dict(checkpoint['model'])
-
+    result_file = open(osp.join(args.output_dir, "results.txt"), "a", 1)    
     METHOD_NAMES = [args.method_name]
     image_rocaucs_df = pd.DataFrame(METHOD_NAMES, columns=['Method'])
     pixel_rocaucs_df = pd.DataFrame(METHOD_NAMES, columns=['Method'])
     au_pros_df = pd.DataFrame(METHOD_NAMES, columns=['Method'])
     rec_loss_df = pd.DataFrame(METHOD_NAMES, columns=['Method'])
     for cls in classes:
-        runner = Runner(args, model, cls)
+        runner = Runner(args, cls)
+        runner.fit()
         image_rocaucs, pixel_rocaucs, au_pros, rec_loss = runner.evaluate()
         image_rocaucs_df[cls.title()] = image_rocaucs_df['Method'].map(image_rocaucs)
         pixel_rocaucs_df[cls.title()] = pixel_rocaucs_df['Method'].map(pixel_rocaucs)
@@ -111,4 +97,4 @@ def run_eyecandies(args):
     result_file.close()
 
 
-run_eyecandies(args)            
+run_eyecandies(args)
