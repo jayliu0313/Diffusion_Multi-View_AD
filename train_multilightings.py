@@ -2,6 +2,7 @@ import torch
 import argparse
 import os
 import os.path as osp
+import torch.nn.functional as F
 from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
@@ -10,12 +11,12 @@ from core.loss import CosineSimilarityLoss
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/test3")
+parser.add_argument('--ckpt_path', default="./checkpoints/random_both")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
-parser.add_argument("--training_mode", default="memory", help="traing type: fuse_fc, fuse_both, mean")
+parser.add_argument("--training_mode", default="random_both", help="traing type: mean, fuse_fc, fuse_both, random_both")
 parser.add_argument("--load_ckpt", default=None)
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
@@ -82,7 +83,7 @@ class Train_Conv_Base():
     def training(self):
         raise NotImplementedError("parent class nie methods not implemented")
     
-class Train_Mean_Rec(Train_Conv_Base):
+class Mean_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
 
@@ -144,7 +145,7 @@ class Train_Mean_Rec(Train_Conv_Base):
         self.train_log_file.close()
         self.val_log_file.close()
 
-class Train_Fuse_fc_Rec(Train_Conv_Base):
+class Fuse_fc_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
 
@@ -152,7 +153,7 @@ class Train_Fuse_fc_Rec(Train_Conv_Base):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
            
-            for lightings in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+            for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
                 
                 lightings = lightings.to(device)
@@ -213,14 +214,93 @@ class Train_Fuse_fc_Rec(Train_Conv_Base):
         self.train_log_file.close()
         self.val_log_file.close()
 
-class Train_Fuse_Both_Rec(Train_Conv_Base):
+class Fuse_Both_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-        self.loss_cos = CosineSimilarityLoss()
+
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
            
+            for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+                self.optimizer.zero_grad()
+                
+                lightings = lightings.to(device)
+                in_ = lightings
+                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
+                fc, fu = self.model.encode(lightings)
+                fc = fc.reshape(-1, 6, 256, 28, 28)
+                fu = fu.reshape(-1, 6, 256, 28, 28)
+            
+                loss = 0
+                for i in range(6):
+                    for j in range(6):
+                        out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
+                        loss += self.criterion(in_[:, j, :, :, :], out)
+
+                for i in range(self.batch_size):
+                    for j in range(self.batch_size):
+                        out = self.model.decode(fc[i, : , :, :, :], fu[j, :, :, :, :])
+                        loss += self.criterion(in_[i, :, :, :, :], out)
+                loss.backward()
+                self.optimizer.step()
+                epoch_loss += (loss.item() / (36 * self.batch_size * self.batch_size))
+                
+            epoch_loss /= len(data_loader)
+            self.total_loss += epoch_loss
+            
+            print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
+
+            if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
+                self.model.eval()
+                epoch_val_loss = 0.0
+                with torch.no_grad():
+                    for lightings, _ in val_loader:
+                        lightings = lightings.to(device)
+                        in_ = lightings
+                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
+                        fc, fu = self.model.encode(lightings)
+                        fc = fc.reshape(-1, 6, 256, 28, 28)
+                        fu = fu.reshape(-1, 6, 256, 28, 28)
+                    
+                        loss = 0
+                        for i in range(6):
+                            for j in range(6):
+                                out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
+                                loss += self.criterion(in_[:, j, :, :, :], out)
+
+                        for i in range(self.batch_size):
+                            for j in range(self.batch_size):
+                                out = self.model.decode(fc[i, : , :, :, :], fu[j, :, :, :, :])
+                                loss += self.criterion(in_[i, :, :, :, :], out)
+                        epoch_val_loss += (loss.item() / (36 * self.batch_size * self.batch_size))
+
+                epoch_val_loss = epoch_val_loss / len(val_loader)
+
+                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
+                self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
+
+                if epoch_val_loss < self.best_val_loss:
+                    self.best_val_loss = epoch_val_loss
+                    self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
+                    print("Save the best checkpoint")
+
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
+
+        self.save_ckpt(epoch_loss, "last_ckpt.pth")
+        self.train_log_file.close()
+        self.val_log_file.close()
+
+class Random_Both_Rec(Train_Conv_Base):
+    def __init__(self, args):
+        super().__init__(args)
+
+    def training(self):
+        for self.epoch in range(self.epochs):
+            epoch_loss = 0.0
+            epoch_loss_rec = 0.0
+            epoch_loss_fc = 0.0
+            epoch_loss_fu = 0.0
             for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
                 
@@ -231,35 +311,42 @@ class Train_Fuse_Both_Rec(Train_Conv_Base):
                 _, D, W, H = fc.shape
                 # random fc by lightings
                 fc = fc.reshape(-1, 6, D, W, H)
-                loss_fc = self.loss_cos(fc)
-                print(loss_fc)
+                var_fc = torch.var(fc, dim = 1)
+                loss_fc = torch.mean(var_fc) * 10
+
                 random_indices = torch.randperm(6)
                 fc = fc[:, random_indices, :, :]
                 fc = fc.reshape(-1, D, W, H)
 
                 # random fu by batch 
                 fu = fu.reshape(-1, 6, D, W, H)
-                loss_fu = torch.var(fu, dim=0)
-                print(loss_fu.shape)
+                var_fu = torch.var(fu, dim = 0)
+                loss_fu = torch.mean(var_fu) * 10
+
                 random_indices = torch.randperm(fu.shape[0])
                 fu = fu[random_indices]
                 fu = fu.reshape(-1, D, W, H)
-
+                
                 out = self.model.decode(fc, fu)
-
+                loss_rec = self.criterion(lightings, out)
         
-                loss = self.criterion(lightings, out)
+                loss =  loss_rec + loss_fc + loss_fu
 
                 
                 loss.backward()
               
                 self.optimizer.step()
+                epoch_loss_rec += loss_rec.item()
+                epoch_loss_fc += loss_fc.item()
+                epoch_loss_fu += loss_fu.item()
                 epoch_loss += loss.item()
-                
+            epoch_loss_rec /= len(data_loader)    
+            epoch_loss_fc /= len(data_loader)  
+            epoch_loss_fu /= len(data_loader)  
             epoch_loss /= len(data_loader)
             self.total_loss += epoch_loss
             
-            print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
+            print('Epoch {}: Loss: {:.6f}, Loss Rec {:.6f}, Loss fc {:.6f}, Loss fu {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_fc, epoch_loss_fu))
 
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
@@ -287,15 +374,17 @@ class Train_Fuse_Both_Rec(Train_Conv_Base):
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
         self.train_log_file.close()
         self.val_log_file.close()
-
+ 
 
 if __name__ == '__main__':
     if args.training_mode == "mean":
-        runner = Train_Mean_Rec(args)
+        runner = Mean_Rec(args)
     elif args.training_mode == "fuse_fc":
-        runner = Train_Fuse_fc_Rec(args)
+        runner = Fuse_fc_Rec(args)
     elif args.training_mode == "fuse_both":
-        runner = Train_Fuse_Both_Rec(args)
+        runner = Fuse_Both_Rec(args)
+    elif args.training_mode == "random_both":
+        runner = Random_Both_Rec(args)
     runner.training()
 
 

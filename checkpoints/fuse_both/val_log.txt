@@ -1,0 +1,1 @@
+Valid Loss: 0.000406Epoch 5: Loss: 0.000189

@@ -203,13 +203,9 @@ class TrainLightings(Dataset):
         normal_paths = []
 
         for cls in eyecandies_classes():
-            if self.train_type == "normal_only":
-                normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
-                depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_depth.png"))
-            else:
-                rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data', "*_image_*.png")))
-                normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
-                depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_depth.png"))
+            rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data', "*_image_*.png")))
+            normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
+            depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_depth.png"))
         
         rgb_paths.sort()
         normal_paths.sort()     
@@ -256,7 +252,6 @@ class ValLightings(Dataset):
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
          transforms.ToTensor(),
         ])
-        self.val_type = val_type
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
@@ -268,31 +263,24 @@ class ValLightings(Dataset):
         normal_paths = []
 
         for cls in eyecandies_classes():
-            if self.val_type == "normal_only":
-                normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
-                depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_depth.png"))
-            else:
-                rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data', "*_image_*.png")))
-                normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
-                depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_depth.png"))
+            rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data', "*_image_*.png")))
+            normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
+            depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_depth.png"))
         
         rgb_paths.sort()
         normal_paths.sort()     
         depth_paths.sort()
-     
-        if self.val_type == "normal_only":
-            sample_paths = list(zip(normal_paths, depth_paths))
-        else:
-            rgb_lighting_paths = []
-            rgb_6_paths = []
-            
-            for i in range(len(rgb_paths)):
-                rgb_6_paths.append(rgb_paths[i])
-                if (i + 1) % 6 == 0:
-                    rgb_lighting_paths.append(rgb_6_paths)
-                    rgb_6_paths = []
-            sample_paths = list(zip(rgb_lighting_paths, normal_paths, depth_paths))
+    
+        rgb_lighting_paths = []
+        rgb_6_paths = []
         
+        for i in range(len(rgb_paths)):
+            rgb_6_paths.append(rgb_paths[i])
+            if (i + 1) % 6 == 0:
+                rgb_lighting_paths.append(rgb_6_paths)
+                rgb_6_paths = []
+        sample_paths = list(zip(rgb_lighting_paths, normal_paths, depth_paths))
+    
         data_tot_paths.extend(sample_paths)
         tot_labels.extend([0] * len(sample_paths))
         return data_tot_paths, tot_labels
@@ -330,12 +318,12 @@ def test_lightings_loader(args, cls, split):
 
 def train_lightings_loader(args):
     dataset = TrainLightings(args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=True, drop_last=False,
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=True, drop_last=True,
                               pin_memory=True)
     return data_loader
 
 def val_lightings_loader(args):
     dataset = ValLightings(args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=False, drop_last=False,
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=False, drop_last=True,
                               pin_memory=True)
     return data_loader

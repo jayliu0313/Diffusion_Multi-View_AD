@@ -32,7 +32,7 @@ class Base_Method():
         if method_name == "nmap_rec":
             self.model = NMap_AE(self.device)
         else:
-            self.model = Convolution_AE(self.device)
+            self.model = Convolution_AE_v2(self.device)
         self.model.to(self.device)
         self.model.eval()
         checkpoint = torch.load(ckpt_path, map_location=self.device)
