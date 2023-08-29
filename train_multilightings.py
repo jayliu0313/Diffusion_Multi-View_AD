@@ -294,7 +294,7 @@ class Fuse_Both_Rec(Train_Conv_Base):
 class Random_Both_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-
+        self.p_loss = torch.nn.PairwiseDistance(p = 2)
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
@@ -311,25 +311,35 @@ class Random_Both_Rec(Train_Conv_Base):
                 _, D, W, H = fc.shape
                 # random fc by lightings
                 fc = fc.reshape(-1, 6, D, W, H)
-                var_fc = torch.var(fc, dim = 1)
-                loss_fc = torch.mean(var_fc) * 10
-
+                mean_fc = torch.mean(fc, dim = 1)
+                loss_fc = 0.0
+                for i in range(6):
+                    loss_fc += torch.sum(self.p_loss(fc[:, i, :, :, :], mean_fc))
+                loss_fc /= 6
+                loss_fc *= 0.01
+                # print("loss_fc", loss_fc)
+                # loss_fc *= 0.01 
                 random_indices = torch.randperm(6)
                 fc = fc[:, random_indices, :, :]
                 fc = fc.reshape(-1, D, W, H)
 
                 # random fu by batch 
                 fu = fu.reshape(-1, 6, D, W, H)
-                var_fu = torch.var(fu, dim = 0)
-                loss_fu = torch.mean(var_fu) * 10
-
+                mean_fu = torch.mean(fu, dim = 0)
+                loss_fu = 0.0
+                for i in range(fu.shape[0]):
+                    loss_fu += torch.sum(self.p_loss(fu[i, :, :, :, :], mean_fu))
+                loss_fu /= fu.shape[0]
+                loss_fu *= 0.01
+                # print("loss_fu", loss_fu)
+                # loss_fu *= 0.01
                 random_indices = torch.randperm(fu.shape[0])
                 fu = fu[random_indices]
                 fu = fu.reshape(-1, D, W, H)
                 
                 out = self.model.decode(fc, fu)
                 loss_rec = self.criterion(lightings, out)
-        
+                # print("loss_rec", loss_rec)
                 loss =  loss_rec + loss_fc + loss_fu
 
                 

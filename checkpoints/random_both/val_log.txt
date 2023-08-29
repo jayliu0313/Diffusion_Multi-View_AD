@@ -1,3 +1,0 @@
-Epoch 0: Loss: 0.010701
-Epoch 5: Loss: 0.005056
-Epoch 10: Loss: 0.002477

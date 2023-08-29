@@ -1,1 +1,3 @@
-Valid Loss: 0.000406Epoch 5: Loss: 0.000189
+Epoch 0: Loss 0.000406
+Epoch 5: Loss 0.000189
+Epoch 10: Loss: 0.000130
