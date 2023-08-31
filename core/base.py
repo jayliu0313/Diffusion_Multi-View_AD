@@ -49,7 +49,7 @@ class Base_Method():
         self.gts = []
 
     def add_sample_to_mem_bank(self, lightings):
-        pass
+        raise NotImplementedError
     
     def predict(self, item, lightings, gt, label):
         raise NotImplementedError

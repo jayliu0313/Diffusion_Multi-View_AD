@@ -294,7 +294,7 @@ class Fuse_Both_Rec(Train_Conv_Base):
 class Random_Both_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-        self.p_loss = torch.nn.PairwiseDistance(p = 2)
+        self.cos_loss = torch.nn.CosineEmbeddingLoss()
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
@@ -311,35 +311,39 @@ class Random_Both_Rec(Train_Conv_Base):
                 _, D, W, H = fc.shape
                 # random fc by lightings
                 fc = fc.reshape(-1, 6, D, W, H)
-                mean_fc = torch.mean(fc, dim = 1)
                 loss_fc = 0.0
                 for i in range(6):
-                    loss_fc += torch.sum(self.p_loss(fc[:, i, :, :, :], mean_fc))
+                    for j in range(6):
+                        if i != j:
+                            f1 = fc[:, i, :, :, :].reshape(-1, D)
+                            f2 = fc[:, j, :, :, :].reshape(-1, D)
+                            loss_fc += self.cos_loss(f1, f2)
                 loss_fc /= 6
-                loss_fc *= 0.01
-                # print("loss_fc", loss_fc)
-                # loss_fc *= 0.01 
+                
+                print("loss_fc", loss_fc)
                 random_indices = torch.randperm(6)
                 fc = fc[:, random_indices, :, :]
                 fc = fc.reshape(-1, D, W, H)
 
                 # random fu by batch 
                 fu = fu.reshape(-1, 6, D, W, H)
-                mean_fu = torch.mean(fu, dim = 0)
+              
                 loss_fu = 0.0
                 for i in range(fu.shape[0]):
-                    loss_fu += torch.sum(self.p_loss(fu[i, :, :, :, :], mean_fu))
+                    for j in range(fu.shape[0]):
+                        if i != j:
+                            f1 = fu[i, :, :, :, :].reshape(-1, D)
+                            f2 = fu[j, :, :, :, :].reshape(-1, D)
+                            loss_fu += self.cos_loss(f1, f2)
                 loss_fu /= fu.shape[0]
-                loss_fu *= 0.01
-                # print("loss_fu", loss_fu)
-                # loss_fu *= 0.01
+                print("loss_fu", loss_fu)
                 random_indices = torch.randperm(fu.shape[0])
                 fu = fu[random_indices]
                 fu = fu.reshape(-1, D, W, H)
                 
                 out = self.model.decode(fc, fu)
                 loss_rec = self.criterion(lightings, out)
-                # print("loss_rec", loss_rec)
+                print("loss_rec", loss_rec)
                 loss =  loss_rec + loss_fc + loss_fu
 
                 
