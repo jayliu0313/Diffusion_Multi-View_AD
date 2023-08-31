@@ -294,7 +294,7 @@ class Fuse_Both_Rec(Train_Conv_Base):
 class Random_Both_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-        self.cos_loss = torch.nn.CosineEmbeddingLoss()
+        self.l1_loss = torch.nn.L1Loss()
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
@@ -311,42 +311,42 @@ class Random_Both_Rec(Train_Conv_Base):
                 _, D, W, H = fc.shape
                 # random fc by lightings
                 fc = fc.reshape(-1, 6, D, W, H)
-                loss_fc = 0.0
-                for i in range(6):
-                    for j in range(6):
-                        if i != j:
-                            f1 = fc[:, i, :, :, :].reshape(-1, D)
-                            f2 = fc[:, j, :, :, :].reshape(-1, D)
-                            loss_fc += self.cos_loss(f1, f2)
-                loss_fc /= 6
-                
-                print("loss_fc", loss_fc)
+                mean_fc = torch.mean(fc, dim = 1)
+                mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
+                loss_fc = self.criterion(fc, mean_fc)
+                # loss_fc = 0.0
+                # for i in range(6):
+                #     for j in range(6):
+                #         if i != j:
+                #             loss_fc += self.criterion(fc[:, i, :, :, :], fc[:, j, :, :, :])        
+                # loss_fc /= (36-6)
+               
                 random_indices = torch.randperm(6)
                 fc = fc[:, random_indices, :, :]
                 fc = fc.reshape(-1, D, W, H)
 
                 # random fu by batch 
                 fu = fu.reshape(-1, 6, D, W, H)
-              
-                loss_fu = 0.0
-                for i in range(fu.shape[0]):
-                    for j in range(fu.shape[0]):
-                        if i != j:
-                            f1 = fu[i, :, :, :, :].reshape(-1, D)
-                            f2 = fu[j, :, :, :, :].reshape(-1, D)
-                            loss_fu += self.cos_loss(f1, f2)
-                loss_fu /= fu.shape[0]
-                print("loss_fu", loss_fu)
+                mean_fu = torch.mean(fu, dim = 0)
+                mean_fu = mean_fu.unsqueeze(0).repeat(fu.shape[0], 1, 1, 1, 1)
+                loss_fu = self.criterion(fu, mean_fu)
+                # loss_fu = 0.0
+                # for i in range(fu.shape[0]):
+                #     for j in range(fu.shape[0]):
+                #         if i != j:
+                #             loss_fu += self.criterion(fu[i, :, :, :, :], fu[j, :, :, :, :])
+                # loss_fu /= (fu.shape[0] * fu.shape[0] - fu.shape[0])
                 random_indices = torch.randperm(fu.shape[0])
                 fu = fu[random_indices]
                 fu = fu.reshape(-1, D, W, H)
                 
                 out = self.model.decode(fc, fu)
                 loss_rec = self.criterion(lightings, out)
-                print("loss_rec", loss_rec)
+                # print("fc", loss_fc)
+                # print("fu", loss_fu)
+                # print("rec", loss_rec)
                 loss =  loss_rec + loss_fc + loss_fu
 
-                
                 loss.backward()
               
                 self.optimizer.step()
@@ -358,32 +358,75 @@ class Random_Both_Rec(Train_Conv_Base):
             epoch_loss_fc /= len(data_loader)  
             epoch_loss_fu /= len(data_loader)  
             epoch_loss /= len(data_loader)
-            self.total_loss += epoch_loss
             
-            print('Epoch {}: Loss: {:.6f}, Loss Rec {:.6f}, Loss fc {:.6f}, Loss fu {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_fc, epoch_loss_fu))
+            print('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_fc, epoch_loss_fu))
 
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
                 epoch_val_loss = 0.0
+                epoch_val_loss_rec = 0.0
+                epoch_val_loss_fc = 0.0
+                epoch_val_loss_fu = 0.0
                 with torch.no_grad():
                     for lightings, _ in val_loader:
                         lightings = lightings.to(device)
                         lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
                         fc, fu = self.model.encode(lightings)
+                        
+                        _, D, W, H = fc.shape
+                        # random fc by lightings
+                        fc = fc.reshape(-1, 6, D, W, H)
+                        mean_fc = torch.mean(fc, dim = 1)
+                        mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
+                        loss_fc = self.criterion(fc, mean_fc)
+                        # loss_fc = 0.0
+                        # for i in range(6):
+                        #     for j in range(6):
+                        #         if i != j:
+                        #             loss_fc += self.criterion(fc[:, i, :, :, :], fc[:, j, :, :, :])
+                        # loss_fc /= (36-6)
+
+                        random_indices = torch.randperm(6)
+                        fc = fc[:, random_indices, :, :]
+                        fc = fc.reshape(-1, D, W, H)
+
+                        # random fu by batch 
+                        fu = fu.reshape(-1, 6, D, W, H)
+                        mean_fu = torch.mean(fu, dim = 0)
+                        mean_fu = mean_fu.unsqueeze(0).repeat(fu.shape[0], 1, 1, 1, 1)
+                        loss_fu = self.criterion(fu, mean_fu)
+                        # loss_fu = 0.0
+                        # for i in range(fu.shape[0]):
+                        #     for j in range(fu.shape[0]):
+                        #         if i != j:
+                        #             loss_fu += self.criterion(fu[i, :, :, :, :], fu[j, :, :, :, :])
+                        # loss_fu /= (fu.shape[0] * fu.shape[0] - fu.shape[0])
+                        random_indices = torch.randperm(fu.shape[0])
+                        fu = fu[random_indices]
+                        fu = fu.reshape(-1, D, W, H)
+                        
                         out = self.model.decode(fc, fu)
+                        loss_rec = self.criterion(lightings, out)
+                        loss = loss_rec + loss_fc + loss_fu
+                        epoch_val_loss_rec += loss_rec.item()
+                        epoch_val_loss_fc += loss_fc.item()
+                        epoch_val_loss_fu += loss_fu.item()
                         epoch_val_loss += loss.item()
 
-                epoch_val_loss = epoch_val_loss / len(val_loader)
+                epoch_val_loss_rec /= len(val_loader)    
+                epoch_val_loss_fc /= len(val_loader)  
+                epoch_val_loss_fu /= len(val_loader)  
+                epoch_val_loss /= len(val_loader)
 
-                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
-                self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
+                print('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_fc, epoch_val_loss_fu))
+                self.val_log_file.write('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_fc, epoch_val_loss_fu))
 
                 if epoch_val_loss < self.best_val_loss:
                     self.best_val_loss = epoch_val_loss
                     self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
                     print("Save the best checkpoint")
 
-            self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_fc, epoch_loss_fu))
 
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
         self.train_log_file.close()

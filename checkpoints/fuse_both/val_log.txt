@@ -60,3 +60,8 @@ Epoch 290: Loss: 0.000030
 Epoch 295: Loss: 0.000028
 Epoch 300: Loss: 0.000025
 Epoch 305: Loss: 0.000031
+Epoch 310: Loss: 0.000026
+Epoch 315: Loss: 0.000029
+Epoch 320: Loss: 0.000034
+Epoch 325: Loss: 0.000028
+Epoch 330: Loss: 0.000026
