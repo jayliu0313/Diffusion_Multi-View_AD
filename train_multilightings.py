@@ -11,13 +11,13 @@ from core.loss import CosineSimilarityLoss
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/random_both")
+parser.add_argument('--ckpt_path', default="./checkpoints/random_both_mseFC")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
 parser.add_argument("--training_mode", default="random_both", help="traing type: mean, fuse_fc, fuse_both, random_both")
-parser.add_argument("--load_ckpt", default=None)
+parser.add_argument("--load_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/mil_test/fuse_both/best_ckpt.pth")
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=4)
@@ -148,11 +148,13 @@ class Mean_Rec(Train_Conv_Base):
 class Fuse_fc_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-
+        self.loss_feature = torch.nn.MSELoss()
+        
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
-           
+            epoch_rec_loss = 0.0
+            epoch_fc_loss = 0.0
             for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
                 
@@ -163,27 +165,40 @@ class Fuse_fc_Rec(Train_Conv_Base):
                 fc = fc.reshape(-1, 6, 256, 28, 28)
                 fu = fu.reshape(-1, 6, 256, 28, 28)
             
-                loss = 0
+                loss = 0.0
+                rec_loss = 0.0
+                fc_loss = 0.0
                 for i in range(6):
                     for j in range(6):
                         out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
-                        loss += self.criterion(in_[:, j, :, :, :], out)
-        
+                        rec_loss += self.criterion(in_[:, j, :, :, :], out)
+                        if i != j:
+                            fc_loss += self.loss_feature(fc[:, i, :, :, :], fc[:, j, :, :, :])
+                # fc_loss /= 30
+                fc_loss *= 10
+                rec_loss /= 36
+                loss = fc_loss + rec_loss
                 loss.backward()
               
                 self.optimizer.step()
-                epoch_loss += (loss.item() / 36)
-                
+                epoch_loss += loss.item()
+                epoch_rec_loss += rec_loss.item() 
+                epoch_fc_loss += fc_loss.item()
+
             epoch_loss /= len(data_loader)
+            epoch_rec_loss /= len(data_loader)
+            epoch_fc_loss /= len(data_loader)
             self.total_loss += epoch_loss
             
-            print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
+            print('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, FC Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_loss, epoch_fc_loss))
 
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
                 epoch_val_loss = 0.0
+                epoch_val_rec_loss = 0.0
+                epoch_val_fc_loss = 0.0
                 with torch.no_grad():
-                    for lightings in val_loader:
+                    for lightings, _ in val_loader:
                         lightings = lightings.to(device)
                         in_ = lightings
                         lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
@@ -191,24 +206,28 @@ class Fuse_fc_Rec(Train_Conv_Base):
                         fc = fc.reshape(-1, 6, 256, 28, 28)
                         fu = fu.reshape(-1, 6, 256, 28, 28)
                     
-                        loss = 0
+                        rec_loss = 0.0
+                        fc_loss = 0.0
                         for i in range(6):
                             for j in range(6):
                                 out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
-                                loss += self.criterion(in_[:, j, :, :, :], out)
-                        epoch_val_loss += (loss.item() / 36)
-
-                epoch_val_loss = epoch_val_loss / len(val_loader)
-
-                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
-                self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
+                                rec_loss += self.criterion(in_[:, j, :, :, :], out)
+                                if i != j:
+                                    fc_loss += self.loss_feature(fc[:, i, :, :, :], fc[:, j, :, :, :])
+                        epoch_val_rec_loss += (rec_loss.item() / 36)
+                        epoch_val_fc_loss += (fc_loss.item() / 30)
+                epoch_val_rec_loss /= len(val_loader)
+                epoch_val_fc_loss /= len(val_loader)
+                epoch_val_loss = epoch_val_rec_loss + epoch_val_fc_loss
+                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Validation Loss: {epoch_val_loss:.6f}, Rec Loss: {epoch_val_rec_loss:.6f}, FC Loss: {epoch_val_fc_loss:.6f}")
+                self.val_log_file.write('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, FC Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss, epoch_val_rec_loss, epoch_val_fc_loss))
 
                 if epoch_val_loss < self.best_val_loss:
                     self.best_val_loss = epoch_val_loss
                     self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
                     print("Save the best checkpoint")
 
-            self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, FC Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_loss, epoch_fc_loss))
 
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
         self.train_log_file.close()
@@ -221,7 +240,9 @@ class Fuse_Both_Rec(Train_Conv_Base):
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
-           
+            epoch_rec_fc_loss = 0.0
+            epoch_feat_fc_loss = 0.0
+            epoch_rec_fu_loss = 0.0
             for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
                 
@@ -232,28 +253,45 @@ class Fuse_Both_Rec(Train_Conv_Base):
                 fc = fc.reshape(-1, 6, 256, 28, 28)
                 fu = fu.reshape(-1, 6, 256, 28, 28)
             
-                loss = 0
+                loss = 0.0
+                rec_fc_loss = 0.0
+                feat_fc_loss = 0.0
+                rec_fu_loss = 0.0
                 for i in range(6):
                     for j in range(6):
                         out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
-                        loss += self.criterion(in_[:, j, :, :, :], out)
-
+                        rec_fc_loss += self.criterion(in_[:, j, :, :, :], out)
+                        if i != j:
+                            feat_fc_loss += self.criterion(fc[:, i, :, :, :], fc[:, j, :, :, :])
+                rec_fc_loss /= 36
+                feat_fc_loss /= 30
                 for i in range(self.batch_size):
                     for j in range(self.batch_size):
                         out = self.model.decode(fc[i, : , :, :, :], fu[j, :, :, :, :])
-                        loss += self.criterion(in_[i, :, :, :, :], out)
+                        rec_fu_loss += self.criterion(in_[i, :, :, :, :], out)
+                rec_fu_loss /= (self.batch_size * self.batch_size)
+                loss = rec_fc_loss + feat_fc_loss + rec_fu_loss
                 loss.backward()
                 self.optimizer.step()
-                epoch_loss += (loss.item() / (36 * self.batch_size * self.batch_size))
-                
+
+                epoch_loss += loss.item()
+                epoch_rec_fc_loss += rec_fu_loss.item()
+                epoch_feat_fc_loss += feat_fc_loss.item() 
+                epoch_rec_fu_loss += rec_fu_loss.item()
             epoch_loss /= len(data_loader)
-            self.total_loss += epoch_loss
+            epoch_rec_fc_loss /= len(data_loader)
+            epoch_feat_fc_loss /= len(data_loader)
+            epoch_rec_fu_loss /= len(data_loader)
             
-            print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
+            print('Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_fc_loss, epoch_feat_fc_loss, epoch_rec_fu_loss))
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_fc_loss, epoch_feat_fc_loss, epoch_rec_fu_loss))
 
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
                 epoch_val_loss = 0.0
+                epoch_val_rec_fc_loss = 0.0
+                epoch_val_feat_fc_loss = 0.0
+                epoch_val_rec_fu_loss = 0.0
                 with torch.no_grad():
                     for lightings, _ in val_loader:
                         lightings = lightings.to(device)
@@ -263,29 +301,41 @@ class Fuse_Both_Rec(Train_Conv_Base):
                         fc = fc.reshape(-1, 6, 256, 28, 28)
                         fu = fu.reshape(-1, 6, 256, 28, 28)
                     
-                        loss = 0
+                        loss = 0.0
+                        rec_fc_loss = 0.0
+                        feat_fc_loss = 0.0
+                        rec_fu_loss = 0.0
                         for i in range(6):
                             for j in range(6):
                                 out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
-                                loss += self.criterion(in_[:, j, :, :, :], out)
-
+                                rec_fc_loss += self.criterion(in_[:, j, :, :, :], out)
+                                if i != j:
+                                    feat_fc_loss += self.criterion(fc[:, i, :, :, :], fc[:, j, :, :, :])
+                        rec_fc_loss /= 36
+                        feat_fc_loss /= 30
                         for i in range(self.batch_size):
                             for j in range(self.batch_size):
                                 out = self.model.decode(fc[i, : , :, :, :], fu[j, :, :, :, :])
-                                loss += self.criterion(in_[i, :, :, :, :], out)
-                        epoch_val_loss += (loss.item() / (36 * self.batch_size * self.batch_size))
+                                rec_fu_loss += self.criterion(in_[i, :, :, :, :], out)
+                        rec_fu_loss /= (self.batch_size * self.batch_size)
+                        loss = rec_fc_loss + feat_fc_loss + rec_fu_loss
 
-                epoch_val_loss = epoch_val_loss / len(val_loader)
+                        epoch_val_loss += loss.item()
+                        epoch_val_rec_fc_loss += rec_fu_loss.item()
+                        epoch_val_feat_fc_loss += feat_fc_loss.item() 
+                        epoch_val_rec_fu_loss += rec_fu_loss.item()
 
-                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Valid Loss: {epoch_val_loss:.6f}")
-                self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
+                epoch_val_loss /= len(val_loader)
+                epoch_val_rec_fc_loss /= len(val_loader)
+                epoch_val_feat_fc_loss /= len(val_loader)
+                epoch_val_rec_fu_loss /= len(val_loader)
+                print('Validation Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_rec_fc_loss, epoch_val_feat_fc_loss, epoch_val_rec_fu_loss))
+                self.val_log_file.write('Validation Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_rec_fc_loss, epoch_val_feat_fc_loss, epoch_val_rec_fu_loss))
 
                 if epoch_val_loss < self.best_val_loss:
                     self.best_val_loss = epoch_val_loss
                     self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
                     print("Save the best checkpoint")
-
-            self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
 
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
         self.train_log_file.close()
@@ -294,7 +344,8 @@ class Fuse_Both_Rec(Train_Conv_Base):
 class Random_Both_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-        self.l1_loss = torch.nn.L1Loss()
+        self.feature_loss = torch.nn.MSELoss()
+        
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
@@ -313,7 +364,7 @@ class Random_Both_Rec(Train_Conv_Base):
                 fc = fc.reshape(-1, 6, D, W, H)
                 mean_fc = torch.mean(fc, dim = 1)
                 mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
-                loss_fc = self.criterion(fc, mean_fc)
+                loss_fc = self.feature_loss(fc, mean_fc)
                 # loss_fc = 0.0
                 # for i in range(6):
                 #     for j in range(6):
@@ -327,9 +378,9 @@ class Random_Both_Rec(Train_Conv_Base):
 
                 # random fu by batch 
                 fu = fu.reshape(-1, 6, D, W, H)
-                mean_fu = torch.mean(fu, dim = 0)
-                mean_fu = mean_fu.unsqueeze(0).repeat(fu.shape[0], 1, 1, 1, 1)
-                loss_fu = self.criterion(fu, mean_fu)
+                # mean_fu = torch.mean(fu, dim = 0)
+                # mean_fu = mean_fu.unsqueeze(0).repeat(fu.shape[0], 1, 1, 1, 1)
+                # loss_fu = self.feature_loss(fu, mean_fu)
                 # loss_fu = 0.0
                 # for i in range(fu.shape[0]):
                 #     for j in range(fu.shape[0]):
@@ -345,14 +396,14 @@ class Random_Both_Rec(Train_Conv_Base):
                 # print("fc", loss_fc)
                 # print("fu", loss_fu)
                 # print("rec", loss_rec)
-                loss =  loss_rec + loss_fc + loss_fu
+                loss =  loss_rec + loss_fc
 
                 loss.backward()
               
                 self.optimizer.step()
                 epoch_loss_rec += loss_rec.item()
                 epoch_loss_fc += loss_fc.item()
-                epoch_loss_fu += loss_fu.item()
+                # epoch_loss_fu += loss_fu.item()
                 epoch_loss += loss.item()
             epoch_loss_rec /= len(data_loader)    
             epoch_loss_fc /= len(data_loader)  
@@ -378,7 +429,7 @@ class Random_Both_Rec(Train_Conv_Base):
                         fc = fc.reshape(-1, 6, D, W, H)
                         mean_fc = torch.mean(fc, dim = 1)
                         mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
-                        loss_fc = self.criterion(fc, mean_fc)
+                        loss_fc = self.feature_loss(fc, mean_fc)
                         # loss_fc = 0.0
                         # for i in range(6):
                         #     for j in range(6):
@@ -392,9 +443,9 @@ class Random_Both_Rec(Train_Conv_Base):
 
                         # random fu by batch 
                         fu = fu.reshape(-1, 6, D, W, H)
-                        mean_fu = torch.mean(fu, dim = 0)
-                        mean_fu = mean_fu.unsqueeze(0).repeat(fu.shape[0], 1, 1, 1, 1)
-                        loss_fu = self.criterion(fu, mean_fu)
+                        # mean_fu = torch.mean(fu, dim = 0)
+                        # mean_fu = mean_fu.unsqueeze(0).repeat(fu.shape[0], 1, 1, 1, 1)
+                        # loss_fu = self.feature_loss(fu, mean_fu)
                         # loss_fu = 0.0
                         # for i in range(fu.shape[0]):
                         #     for j in range(fu.shape[0]):
@@ -407,10 +458,10 @@ class Random_Both_Rec(Train_Conv_Base):
                         
                         out = self.model.decode(fc, fu)
                         loss_rec = self.criterion(lightings, out)
-                        loss = loss_rec + loss_fc + loss_fu
+                        loss = loss_rec + loss_fc
                         epoch_val_loss_rec += loss_rec.item()
                         epoch_val_loss_fc += loss_fc.item()
-                        epoch_val_loss_fu += loss_fu.item()
+                        # epoch_val_loss_fu += loss_fu.item()
                         epoch_val_loss += loss.item()
 
                 epoch_val_loss_rec /= len(val_loader)    
