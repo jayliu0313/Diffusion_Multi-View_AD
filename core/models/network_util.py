@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class MaskedConv2d_3x3(nn.Module):
-    def __init__(self, in_channels, out_channels, padding=1, bias=False):
+    def __init__(self, in_channels, out_channels, padding=1, bias=True):
         super(MaskedConv2d_3x3, self).__init__()
         kernel_size = 3 
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=bias)

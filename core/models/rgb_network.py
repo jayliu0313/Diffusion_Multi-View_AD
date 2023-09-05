@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import random
 from core.models.network_util import double_conv, masked_double_conv, MaskedConv2d_3x3
 
 class Convolution_AE(nn.Module):
@@ -408,6 +409,7 @@ class Masked_ConvAE_v2(nn.Module):
         )
 
     def encode(self, lighting):
+        
         conv1 = self.dconv_down1(lighting.to(self.device))
     
         x = self.maxpool(conv1)
@@ -442,7 +444,20 @@ class Masked_ConvAE_v2(nn.Module):
         
         out = self.conv_last(x)
         return out
-     
+
+    def add_random_masked(image, scale = 0.1, prob = 0.5):
+        if random.random() <= prob:
+            num = random.randint(1, 12)
+            for i in range(num):
+                dim_channel, w, h = image.shape
+                x = random.randint(0, w - 1)
+                y = random.randint(0, h - 1)
+                new_w = random.randint(1, min(40, w - x))
+                new_h = random.randint(1, min(40, h - y))
+                noise = torch.randn((dim_channel, new_w, new_h)) * scale
+                image[:, x:x+new_w, y:y+new_h] += noise
+        return image
+
     def get_fc(self, lighting):
         conv1 = self.dconv_down1(lighting.to(self.device))
         x = self.maxpool(conv1)
@@ -484,7 +499,6 @@ class Masked_ConvAE_v2(nn.Module):
     def freeze_model(self):
         for param in self.parameters():
             param.requires_grad = False
-
 
 class Conv_InstanceNorm(nn.Module):
 

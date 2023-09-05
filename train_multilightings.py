@@ -10,7 +10,7 @@ from core.models.rgb_network import Masked_ConvAE, Masked_ConvAE_v2
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/fuseFC_maskedConv_wograd_withbias")
+parser.add_argument('--ckpt_path', default="./checkpoints/fuseFC_maskedConvV2Withbias_NoiseInput")
 parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
@@ -57,7 +57,7 @@ class Train_Conv_Base():
         self.val_every = 5  # every 5 epoch to check validation
         self.batch_size = args.batch_size
 
-        self.model = Masked_ConvAE(device)
+        self.model = Masked_ConvAE_v2(device)
         self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
         self.criterion = torch.nn.MSELoss().to(device)
@@ -155,13 +155,12 @@ class Fuse_fc_Rec(Train_Conv_Base):
             epoch_loss = 0.0
             epoch_rec_loss = 0.0
             epoch_fc_loss = 0.0
-            for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+            for lightings, noise_imgs, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
-                
-                lightings = lightings.to(device)
-                in_ = lightings
-                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
-                fc, fu = self.model.encode(lightings)
+                noise_imgs = noise_imgs.to(device)
+                in_ = lightings.to(device)
+                noise_imgs = noise_imgs.reshape(-1, 3, args.image_size, args.image_size) 
+                fc, fu = self.model.encode(noise_imgs)
                 fc = fc.reshape(-1, 6, 256, 28, 28)
                 fu = fu.reshape(-1, 6, 256, 28, 28)
             
@@ -198,11 +197,11 @@ class Fuse_fc_Rec(Train_Conv_Base):
                 epoch_val_rec_loss = 0.0
                 epoch_val_fc_loss = 0.0
                 with torch.no_grad():
-                    for lightings, _ in val_loader:
-                        lightings = lightings.to(device)
-                        in_ = lightings
-                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
-                        fc, fu = self.model.encode(lightings)
+                    for lightings, noise_imgs, _ in val_loader:
+                        noise_imgs = noise_imgs.to(device)
+                        in_ = lightings.to(device)
+                        noise_imgs = noise_imgs.reshape(-1, 3, args.image_size, args.image_size) 
+                        fc, fu = self.model.encode(noise_imgs)
                         fc = fc.reshape(-1, 6, 256, 28, 28)
                         fu = fu.reshape(-1, 6, 256, 28, 28)
                     
