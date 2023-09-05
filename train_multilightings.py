@@ -6,18 +6,18 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
-from core.models.rgb_network import Convolution_AE, Convolution_AE_v2
-from core.loss import CosineSimilarityLoss
+from core.models.rgb_network import Masked_ConvAE, Masked_ConvAE_v2
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/random_both_mseFC")
-parser.add_argument('--batch_size', default=16, type=int)
+parser.add_argument('--ckpt_path', default="./checkpoints/fuseFC_maskedConv_wograd_withbias")
+parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
-parser.add_argument("--training_mode", default="random_both", help="traing type: mean, fuse_fc, fuse_both, random_both")
-parser.add_argument("--load_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/mil_test/fuse_both/best_ckpt.pth")
+parser.add_argument("--training_mode", default="fuse_fc", help="traing type: mean, fuse_fc, fuse_both, random_both")
+parser.add_argument("--model", default="Masked_Conv", help="traing type: Conv, Conv_Ins, Masked_Conv")
+parser.add_argument("--load_ckpt", default=None)
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=4)
@@ -57,7 +57,7 @@ class Train_Conv_Base():
         self.val_every = 5  # every 5 epoch to check validation
         self.batch_size = args.batch_size
 
-        self.model = Convolution_AE_v2(device)
+        self.model = Masked_ConvAE(device)
         self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
         self.criterion = torch.nn.MSELoss().to(device)
@@ -165,25 +165,25 @@ class Fuse_fc_Rec(Train_Conv_Base):
                 fc = fc.reshape(-1, 6, 256, 28, 28)
                 fu = fu.reshape(-1, 6, 256, 28, 28)
             
-                loss = 0.0
                 rec_loss = 0.0
-                fc_loss = 0.0
+                # fc_loss = 0.0
                 for i in range(6):
                     for j in range(6):
                         out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
                         rec_loss += self.criterion(in_[:, j, :, :, :], out)
-                        if i != j:
-                            fc_loss += self.loss_feature(fc[:, i, :, :, :], fc[:, j, :, :, :])
+                        # if i != j:
+                        #     fc_loss += self.loss_feature(fc[:, i, :, :, :], fc[:, j, :, :, :])
                 # fc_loss /= 30
-                fc_loss *= 10
+                # fc_loss *= 10
                 rec_loss /= 36
-                loss = fc_loss + rec_loss
+                # print(rec_loss)
+                loss = rec_loss
                 loss.backward()
               
                 self.optimizer.step()
                 epoch_loss += loss.item()
                 epoch_rec_loss += rec_loss.item() 
-                epoch_fc_loss += fc_loss.item()
+                # epoch_fc_loss += fc_loss.item()
 
             epoch_loss /= len(data_loader)
             epoch_rec_loss /= len(data_loader)
@@ -207,15 +207,13 @@ class Fuse_fc_Rec(Train_Conv_Base):
                         fu = fu.reshape(-1, 6, 256, 28, 28)
                     
                         rec_loss = 0.0
-                        fc_loss = 0.0
+                        # fc_loss = 0.0
                         for i in range(6):
                             for j in range(6):
                                 out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
                                 rec_loss += self.criterion(in_[:, j, :, :, :], out)
-                                if i != j:
-                                    fc_loss += self.loss_feature(fc[:, i, :, :, :], fc[:, j, :, :, :])
                         epoch_val_rec_loss += (rec_loss.item() / 36)
-                        epoch_val_fc_loss += (fc_loss.item() / 30)
+                        # epoch_val_fc_loss += (fc_loss.item() / 30)
                 epoch_val_rec_loss /= len(val_loader)
                 epoch_val_fc_loss /= len(val_loader)
                 epoch_val_loss = epoch_val_rec_loss + epoch_val_fc_loss
@@ -227,7 +225,7 @@ class Fuse_fc_Rec(Train_Conv_Base):
                     self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
                     print("Save the best checkpoint")
 
-            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, FC Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_loss, epoch_fc_loss))
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, FC Loss: {:.6f}\n'.format(self.epoch, epoch_loss, epoch_rec_loss, epoch_fc_loss))
 
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
         self.train_log_file.close()
@@ -284,7 +282,7 @@ class Fuse_Both_Rec(Train_Conv_Base):
             epoch_rec_fu_loss /= len(data_loader)
             
             print('Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_fc_loss, epoch_feat_fc_loss, epoch_rec_fu_loss))
-            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_fc_loss, epoch_feat_fc_loss, epoch_rec_fu_loss))
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}\n'.format(self.epoch, epoch_loss, epoch_rec_fc_loss, epoch_feat_fc_loss, epoch_rec_fu_loss))
 
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
@@ -330,7 +328,7 @@ class Fuse_Both_Rec(Train_Conv_Base):
                 epoch_val_feat_fc_loss /= len(val_loader)
                 epoch_val_rec_fu_loss /= len(val_loader)
                 print('Validation Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_rec_fc_loss, epoch_val_feat_fc_loss, epoch_val_rec_fu_loss))
-                self.val_log_file.write('Validation Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_rec_fc_loss, epoch_val_feat_fc_loss, epoch_val_rec_fu_loss))
+                self.val_log_file.write('Validation Epoch {}: Loss: {:.6f}, Rec_FC_Loss: {:.6f}, Feat_FC_Loss: {:.6f}, Rec_FU_Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss, epoch_val_rec_fc_loss, epoch_val_feat_fc_loss, epoch_val_rec_fu_loss))
 
                 if epoch_val_loss < self.best_val_loss:
                     self.best_val_loss = epoch_val_loss

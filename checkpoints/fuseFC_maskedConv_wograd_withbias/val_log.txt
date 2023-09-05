@@ -1,0 +1,4 @@
+Epoch 0: Loss: 0.005066, Rec Loss: 0.005066, FC Loss: 0.000000
+Epoch 5: Loss: 0.001964, Rec Loss: 0.001964, FC Loss: 0.000000
+Epoch 10: Loss: 0.001385, Rec Loss: 0.001385, FC Loss: 0.000000
+Epoch 15: Loss: 0.001160, Rec Loss: 0.001160, FC Loss: 0.000000

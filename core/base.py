@@ -6,7 +6,7 @@ from tqdm import tqdm
 from utils.au_pro_util import calculate_au_pro
 from utils.visualize_util import *
 from sklearn.metrics import roc_auc_score
-from core.models.rgb_network import Convolution_AE_v2, Convolution_AE
+from core.models.rgb_network import Convolution_AE_v2, Masked_ConvAE_v2
 from core.models.nmap_network import NMap_AE
 
 class Base_Method():
@@ -32,7 +32,8 @@ class Base_Method():
         if method_name == "nmap_rec":
             self.model = NMap_AE(self.device)
         else:
-            self.model = Convolution_AE_v2(self.device)
+            self.model = Masked_ConvAE_v2(self.device)
+
         self.model.to(self.device)
         self.model.eval()
         checkpoint = torch.load(ckpt_path, map_location=self.device)
