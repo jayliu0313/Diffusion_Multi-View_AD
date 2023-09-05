@@ -333,6 +333,7 @@ class ValLightings(Dataset):
 
         rgb_path = img_path[0]
         images = []
+        noise_images = []
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
             img = self.rgb_transform(img)
