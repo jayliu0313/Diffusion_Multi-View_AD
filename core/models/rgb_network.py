@@ -3,6 +3,23 @@ import torch
 import random
 from core.models.network_util import double_conv, masked_double_conv, MaskedConv2d_3x3
 
+def add_random_masked(batch_images, scale = 0.3, prob = 0.8):
+        out_images = []
+        for image in batch_images:
+            if random.random() <= prob:
+                num = random.randint(5, 20)
+                for i in range(num):
+                    dim_channel, w, h = image.shape
+                    x = random.randint(0, w - 1)
+                    y = random.randint(0, h - 1)
+                    new_w = random.randint(1, min(80, w - x))
+                    new_h = random.randint(1, min(80, h - y))
+                    noise = torch.randn((dim_channel, new_w, new_h)).to('cuda') * scale
+                    image[:, x:x+new_w, y:y+new_h] += noise
+            out_images.append(image)
+        out_images = torch.stack(out_images)
+        return out_images
+
 class Convolution_AE(nn.Module):
 
     def __init__(self, device, channel = 32):
@@ -286,6 +303,11 @@ class Masked_ConvAE(nn.Module):
             nn.Sigmoid(),                            
         )
 
+    def forward(self, lighting):
+        fc, fu = self.encode(lighting)
+        out = self.decode(fc, fu)
+        return fc, out
+    
     def encode(self, lighting):
         conv1 = self.dconv_down1(lighting.to(self.device))
     
@@ -370,12 +392,11 @@ class Masked_ConvAE_v2(nn.Module):
         self.device = device
         self.image_chennels = 3
         self.img_size = 224
-
         self.dconv_down1 = masked_double_conv(3, channel)
         self.dconv_down2 = masked_double_conv(channel, channel * 2)
         self.dconv_down3 = masked_double_conv(channel * 2, channel * 4)
         self.dconv_down4 = masked_double_conv(channel * 4, channel * 8)        
-
+        
         self.maxpool = nn.MaxPool2d(2)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
 
@@ -408,10 +429,16 @@ class Masked_ConvAE_v2(nn.Module):
             nn.Sigmoid(),                            
         )
 
+    def forward(self, lighting):
+        fc, fu = self.encode(lighting)
+        out = self.decode(fc, fu)
+        return fc, out
+
     def encode(self, lighting):
-        
+       
+        lighting = add_random_masked(lighting)
         conv1 = self.dconv_down1(lighting.to(self.device))
-    
+        
         x = self.maxpool(conv1)
 
         conv2 = self.dconv_down2(x)
@@ -444,19 +471,6 @@ class Masked_ConvAE_v2(nn.Module):
         
         out = self.conv_last(x)
         return out
-
-    def add_random_masked(image, scale = 0.1, prob = 0.5):
-        if random.random() <= prob:
-            num = random.randint(1, 12)
-            for i in range(num):
-                dim_channel, w, h = image.shape
-                x = random.randint(0, w - 1)
-                y = random.randint(0, h - 1)
-                new_w = random.randint(1, min(40, w - x))
-                new_h = random.randint(1, min(40, h - y))
-                noise = torch.randn((dim_channel, new_w, new_h)) * scale
-                image[:, x:x+new_w, y:y+new_h] += noise
-        return image
 
     def get_fc(self, lighting):
         conv1 = self.dconv_down1(lighting.to(self.device))

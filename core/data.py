@@ -2,6 +2,7 @@ import os
 import glob
 from PIL import Image
 from torchvision import transforms
+from einops import repeat, rearrange
 import glob
 from torch.utils.data import Dataset
 from utils.mvtec3d_util import *
@@ -9,15 +10,15 @@ from torch.utils.data import DataLoader
 import numpy as np
 import random
 
-def add_random_masked(image, scale = 0.1, prob = 0.5):
+def add_random_masked(image, scale = 0.3, prob = 0.8):
         if random.random() <= prob:
-            num = random.randint(0, 5)
+            num = random.randint(5, 20)
             for i in range(num):
                 dim_channel, w, h = image.shape
                 x = random.randint(0, w - 1)
                 y = random.randint(0, h - 1)
-                new_w = random.randint(1, min(45, w - x))
-                new_h = random.randint(1, min(45, h - y))
+                new_w = random.randint(1, min(80, w - x))
+                new_h = random.randint(1, min(80, h - y))
                 noise = torch.randn((dim_channel, new_w, new_h)) * scale
                 image[:, x:x+new_w, y:y+new_h] += noise
         return image
@@ -153,7 +154,7 @@ class TestLightings(BaseDataset):
             img = Image.open(rgb_path[i]).convert('RGB')
             
             img = self.rgb_transform(img)
-            
+            img = add_random_masked(img)
             # img = img * mask
             images.append(img)
         images = torch.stack(images)
@@ -270,20 +271,20 @@ class TrainLightings(Dataset):
 
         rgb_path = img_path[0]
         images = []
-        noise_images = []
+        # noise_images = []
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
             img = self.rgb_transform(img)
-            noise_img = add_random_masked(img)
+            # noise_img = add_random_masked(img)
             images.append(img)
-            noise_images.append(noise_img)
+            # noise_images.append(noise_img)
         images = torch.stack(images)
-        noise_images = torch.stack(noise_images)
+        # noise_images = torch.stack(noise_images)
         normal_path = img_path[1]
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
-        return images, noise_images, nmap
+        return images, images, nmap
 
 class ValLightings(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies'):
@@ -333,20 +334,20 @@ class ValLightings(Dataset):
 
         rgb_path = img_path[0]
         images = []
-        noise_images = []
+        # noise_images = []
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
             img = self.rgb_transform(img)
-            noise_img = add_random_masked(img)
+            # noise_img = add_random_masked(img)
             images.append(img)
-            noise_images.append(noise_img)
+            # noise_images.append(noise_img)
         images = torch.stack(images)
-        noise_images = torch.stack(noise_images)
+        # noise_images = torch.stack(noise_images)
         normal_path = img_path[1]
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
-        return images, noise_images, nmap
+        return images, images, nmap
 
 
 

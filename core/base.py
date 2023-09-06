@@ -6,7 +6,7 @@ from tqdm import tqdm
 from utils.au_pro_util import calculate_au_pro
 from utils.visualize_util import *
 from sklearn.metrics import roc_auc_score
-from core.models.rgb_network import Convolution_AE_v2, Masked_ConvAE_v2
+from core.models.rgb_network import Convolution_AE_v2, Masked_ConvAE_v2, Masked_ConvAE
 from core.models.nmap_network import NMap_AE
 
 class Base_Method():

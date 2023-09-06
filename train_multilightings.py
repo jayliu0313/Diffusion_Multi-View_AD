@@ -10,7 +10,7 @@ from core.models.rgb_network import Masked_ConvAE, Masked_ConvAE_v2
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/fuseFC_maskedConvWithbias_NoiseInput")
+parser.add_argument('--ckpt_path', default="./checkpoints/fuseFC_maskedConvV2Withbias_test_NoiseInput")
 parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
@@ -57,7 +57,7 @@ class Train_Conv_Base():
         self.val_every = 5  # every 5 epoch to check validation
         self.batch_size = args.batch_size
 
-        self.model = Masked_ConvAE(device)
+        self.model = Masked_ConvAE_v2(device)
         self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
         self.criterion = torch.nn.MSELoss().to(device)
