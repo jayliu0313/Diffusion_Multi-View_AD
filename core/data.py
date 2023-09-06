@@ -12,13 +12,13 @@ import random
 
 def add_random_masked(image, scale = 0.3, prob = 0.8):
         if random.random() <= prob:
-            num = random.randint(5, 20)
-            for i in range(num):
+            num = random.randint(3, 20)
+            for _ in range(num):
                 dim_channel, w, h = image.shape
                 x = random.randint(0, w - 1)
                 y = random.randint(0, h - 1)
-                new_w = random.randint(1, min(80, w - x))
-                new_h = random.randint(1, min(80, h - y))
+                new_w = random.randint(1, min(60, w - x))
+                new_h = random.randint(1, min(60, h - y))
                 noise = torch.randn((dim_channel, new_w, new_h)) * scale
                 image[:, x:x+new_w, y:y+new_h] += noise
         return image
@@ -72,16 +72,13 @@ def mvtec3d_classes():
         "tire",
     ]
 
-def gauss_noise_tensor(img):
+def gauss_noise_tensor(img, max_sigma = 0.5):
     assert isinstance(img, torch.Tensor)
     dtype = img.dtype
     if not img.is_floating_point():
         img = img.to(torch.float32)
-    
-    sigma = 0.1
-    
-    out = img + sigma * torch.randn_like(img)
-    
+    out = img + max_sigma * torch.randn_like(img).clamp(-1, 1)
+    out = out.clamp(0, 1)
     if out.dtype != dtype:
         out = out.to(dtype)
         
@@ -154,7 +151,7 @@ class TestLightings(BaseDataset):
             img = Image.open(rgb_path[i]).convert('RGB')
             
             img = self.rgb_transform(img)
-            img = add_random_masked(img)
+            img = gauss_noise_tensor(img)
             # img = img * mask
             images.append(img)
         images = torch.stack(images)

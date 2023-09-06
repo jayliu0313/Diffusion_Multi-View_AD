@@ -3,22 +3,35 @@ import torch
 import random
 from core.models.network_util import double_conv, masked_double_conv, MaskedConv2d_3x3
 
-def add_random_masked(batch_images, scale = 0.3, prob = 0.8):
+def add_random_masked(batch_images, scale = 0.5, prob = 0.8):
         out_images = []
         for image in batch_images:
             if random.random() <= prob:
-                num = random.randint(5, 20)
+                num = random.randint(3, 20)
                 for i in range(num):
                     dim_channel, w, h = image.shape
                     x = random.randint(0, w - 1)
                     y = random.randint(0, h - 1)
-                    new_w = random.randint(1, min(80, w - x))
-                    new_h = random.randint(1, min(80, h - y))
-                    noise = torch.randn((dim_channel, new_w, new_h)).to('cuda') * scale
+                    new_w = random.randint(1, min(60, w - x))
+                    new_h = random.randint(1, min(60, h - y))
+                    noise = torch.randn((dim_channel, new_w, new_h)).clamp(-1, 1).to('cuda') * scale
                     image[:, x:x+new_w, y:y+new_h] += noise
+                    image = image.clamp(0, 1)
             out_images.append(image)
         out_images = torch.stack(out_images)
         return out_images
+
+def gauss_noise_tensor(img, max_sigma = 0.3):
+    assert isinstance(img, torch.Tensor)
+    dtype = img.dtype
+    if not img.is_floating_point():
+        img = img.to(torch.float32)
+    out = img + max_sigma * torch.randn_like(img).clamp(-1, 1)
+    out = out.clamp(0, 1)
+    if out.dtype != dtype:
+        out = out.to(dtype)
+        
+    return out
 
 class Convolution_AE(nn.Module):
 

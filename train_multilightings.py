@@ -10,7 +10,7 @@ from core.models.rgb_network import Masked_ConvAE, Masked_ConvAE_v2
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/fuseFC_maskedConvV2Withbias_test_NoiseInput")
+parser.add_argument('--ckpt_path', default="./checkpoints/fuseFC_maskedConvV2Withbias_test_addMasked")
 parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
