@@ -23,26 +23,37 @@ def add_random_masked(image, scale = 0.3, prob = 0.8):
                 image[:, x:x+new_w, y:y+new_h] += noise
         return image
 
-class AddGaussianNoise(object):
-    def __init__(self, mean=0, std=1):
-        self.mean = mean
-        self.std = std
+# def gauss_noise_tensor(img, max_sigma = 0.3):
+#     assert isinstance(img, torch.Tensor)
+    
+#     dtype = img.dtype
+#     if not img.is_floating_point():
+#         img = img.to(torch.float32)
+#     max_sigma = torch.randint(0, 5, (img.shape[0],))
+#     out = img + torch.mul(max_sigma, torch.randn_like(img).clamp(-1, 1)).to(img.device)
+#     out = out.clamp(0, 1)
+#     if out.dtype != dtype:
+#         out = out.to(dtype)
+        
+#     return out
 
-    def __call__(self, img):
-        # 随机决定是否为图像添加高斯噪声
-        if random.random() < 0.2:  # 这里可以调整添加噪声的概率
-            # 随机选择噪声区域的位置和大小
-            width, height = img.shape[2], img.shape[1]
-            x = random.randint(0, width)
-            y = random.randint(0, height)
-            w = random.randint(1, width - x)
-            h = random.randint(1, height - y)
-            
-            # 为选定的区域添加高斯噪声
-            noise = torch.randn((img.shape[0], h, w)) * self.std + self.mean
-            print(noise)
-            img[:, y:y+h, x:x+w] += noise
-            return img
+def gauss_noise_tensor(img, max_range = 0.6):
+    assert isinstance(img, torch.Tensor)
+    
+    dtype = img.dtype
+    if not img.is_floating_point():
+        img = img.to(torch.float32)
+
+    scalar = torch.rand(img.shape[0]) * (max_range - 0.0) + 0.0
+    scalar = scalar.reshape(-1, 1, 1, 1).to(img.device)
+   
+    out = img + scalar * torch.randn_like(img).clamp(-1, 1).to(img.device)
+    out = out.clamp(0, 1)
+    if out.dtype != dtype:
+        out = out.to(dtype)
+        
+    return out
+
 
 def eyecandies_classes():
     return [
@@ -72,17 +83,6 @@ def mvtec3d_classes():
         "tire",
     ]
 
-def gauss_noise_tensor(img, max_sigma = 0.5):
-    assert isinstance(img, torch.Tensor)
-    dtype = img.dtype
-    if not img.is_floating_point():
-        img = img.to(torch.float32)
-    out = img + max_sigma * torch.randn_like(img).clamp(-1, 1)
-    out = out.clamp(0, 1)
-    if out.dtype != dtype:
-        out = out.to(dtype)
-        
-    return out
 
 MEAN = [0.0, 0.0, 0.0]
 STD = [255, 255, 255]
@@ -97,8 +97,7 @@ class BaseDataset(Dataset):
         self.rgb_transform = transforms.Compose(
             [transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BICUBIC),
              transforms.ToTensor()])    
-        self.add_masked = AddGaussianNoise(mean=0.0, std=1.0)
-
+    
 class TestLightings(BaseDataset):
     def __init__(self, class_name, img_size, dataset_path):
         super().__init__(split="test_public", class_name=class_name, img_size=img_size, dataset_path=dataset_path)
@@ -149,13 +148,10 @@ class TestLightings(BaseDataset):
         images = []
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
-            
             img = self.rgb_transform(img)
-            img = gauss_noise_tensor(img)
-            # img = img * mask
             images.append(img)
         images = torch.stack(images)
-
+        images = gauss_noise_tensor(images)
         gt = Image.open(gt).convert('L')
         if np.any(gt):
             gt = self.gt_transform(gt)
@@ -272,11 +268,8 @@ class TrainLightings(Dataset):
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
             img = self.rgb_transform(img)
-            # noise_img = add_random_masked(img)
             images.append(img)
-            # noise_images.append(noise_img)
         images = torch.stack(images)
-        # noise_images = torch.stack(noise_images)
         normal_path = img_path[1]
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')

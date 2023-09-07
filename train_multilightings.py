@@ -6,11 +6,11 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
-from core.models.rgb_network import Masked_ConvAE, Masked_ConvAE_v2
+from core.models.rgb_network import Masked_ConvAE, Masked_ConvAE_v2, gauss_noise_tensor
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/fuseFC_maskedConvV2Withbias_test_addMasked")
+parser.add_argument('--ckpt_path', default="checkpoints/fuseFC_maskedConvV2Withbias_GuaNoiseV2_scale06")
 parser.add_argument('--batch_size', default=8, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
@@ -159,7 +159,8 @@ class Fuse_fc_Rec(Train_Conv_Base):
                 self.optimizer.zero_grad()
                 noise_imgs = noise_imgs.to(device)
                 in_ = lightings.to(device)
-                noise_imgs = noise_imgs.reshape(-1, 3, args.image_size, args.image_size) 
+                noise_imgs = noise_imgs.reshape(-1, 3, args.image_size, args.image_size)
+                noise_imgs = gauss_noise_tensor(noise_imgs)
                 fc, fu = self.model.encode(noise_imgs)
                 fc = fc.reshape(-1, 6, 256, 28, 28)
                 fu = fu.reshape(-1, 6, 256, 28, 28)

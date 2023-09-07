@@ -8,6 +8,8 @@ class Base_Reconstruct(Base_Method):
         super().__init__(args, cls_path)
         
     def compute_max_score(self, score_maps, lightings):
+        # print(lightings.shape)
+        # lightings = gauss_noise_tensor(lightings)
         final_score = -99999
         final_map = torch.zeros((1, self.image_size, self.image_size))
         img = torch.zeros((3, self.image_size, self.image_size))

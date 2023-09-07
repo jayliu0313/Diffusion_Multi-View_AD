@@ -21,17 +21,23 @@ def add_random_masked(batch_images, scale = 0.5, prob = 0.8):
         out_images = torch.stack(out_images)
         return out_images
 
-def gauss_noise_tensor(img, max_sigma = 0.3):
+def gauss_noise_tensor(img, max_range = 0.6):
     assert isinstance(img, torch.Tensor)
+    
     dtype = img.dtype
     if not img.is_floating_point():
         img = img.to(torch.float32)
-    out = img + max_sigma * torch.randn_like(img).clamp(-1, 1)
+
+    scalar = torch.rand(img.shape[0]) * (max_range - 0.0) + 0.0
+    scalar = scalar.reshape(-1, 1, 1, 1).to(img.device)
+   
+    out = img + scalar * torch.randn_like(img).clamp(-1, 1).to(img.device)
     out = out.clamp(0, 1)
     if out.dtype != dtype:
         out = out.to(dtype)
         
     return out
+
 
 class Convolution_AE(nn.Module):
 
@@ -196,6 +202,7 @@ class Convolution_AE_v2(nn.Module):
         return fc, out
 
     def encode(self, lighting):
+        
         conv1 = self.dconv_down1(lighting.to(self.device))
         x = self.maxpool(conv1)
 
@@ -449,7 +456,7 @@ class Masked_ConvAE_v2(nn.Module):
 
     def encode(self, lighting):
        
-        lighting = add_random_masked(lighting)
+        # lighting = gauss_noise_tensor(lighting)
         conv1 = self.dconv_down1(lighting.to(self.device))
         
         x = self.maxpool(conv1)
