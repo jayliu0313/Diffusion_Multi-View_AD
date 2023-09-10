@@ -25,8 +25,10 @@ class Base_Method():
         self.reconstruct_path = os.path.join(cls_path, "Reconstruction")
         self.score_type = args.score_type
         
-        self.avg_pool = nn.AvgPool2d(3, stride=None, padding=0, ceil_mode=False, count_include_pad=True, divisor_override=None)
-        self.max_pool = nn.MaxPool2d(3, padding=1)
+        self.average = torch.nn.AvgPool2d(3, stride=1, padding=1)
+        self.resize = torch.nn.AdaptiveAvgPool2d((28, 28))
+        # self.blur = torch.Gua(4).to(self.device)
+
         if not os.path.exists(self.reconstruct_path):
             os.makedirs(self.reconstruct_path)
 

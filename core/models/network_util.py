@@ -162,10 +162,10 @@ def masked_double_conv(in_channels, out_channels, norm=None):
     if norm == None:
         return nn.Sequential(
             MaskedConv2d_3x3(in_channels, out_channels, padding=1),
-            nn.BatchNorm2d(out_channels),
+            # nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             MaskedConv2d_3x3(out_channels, out_channels, padding=1),
-            nn.BatchNorm2d(out_channels),
+            # nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )   
     elif norm == "instanceNorm":

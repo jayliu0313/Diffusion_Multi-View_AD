@@ -13,9 +13,10 @@ class Base_Reconstruct(Base_Method):
         final_score = -99999
         final_map = torch.zeros((1, self.image_size, self.image_size))
         img = torch.zeros((3, self.image_size, self.image_size))
+    
         for i in range(6):
             score_map = score_maps[i, :, :, :]
-            topk_score, _ = torch.topk(score_map.flatten(), 100)
+            topk_score, _ = torch.topk(score_map.flatten(), 20)
             score = torch.mean(topk_score)
             if(final_score < score):
                 final_score = score  
@@ -69,11 +70,15 @@ class Rec(Base_Reconstruct):
     def predict(self, item, lightings, gt, label):
         lightings = lightings.squeeze().to(self.device)
         out =  self.model(lightings)
-        lightings = self.avg_pool(lightings)
-        out = self.avg_pool(out)
+
+        lightings = self.average(lightings)
+        out = self.average(out)
+        
         loss = self.criteria(lightings, out)
+        
         self.cls_rec_loss += loss.item()
         score_maps = torch.sum(torch.abs(lightings - out), dim=1)
+        # score_maps = self.blur(score_maps)
         score_maps = score_maps.unsqueeze(1)
 
         if(self.score_type == 0):
@@ -102,6 +107,8 @@ class Recursive_Rec(Base_Reconstruct):
         for _ in range(self.times):
             out =  self.model(in_)
             in_ = out
+        out = self.average(out)
+        lightings = self.average(lightings)
         loss = self.criteria(lightings, out)
         self.cls_rec_loss += loss.item()
         score_maps = torch.sum(torch.abs(lightings - out), dim=1)

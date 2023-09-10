@@ -9,9 +9,7 @@ class Memory_Method(Base_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
         self.f_coreset = 1
-        self.average = torch.nn.AvgPool2d(3, stride=1, padding=1)
-        self.resize = torch.nn.AdaptiveAvgPool2d((28, 28))
-        self.blur = KNNGaussianBlur(4)
+        
 
     def compute_s_s_map(self, patch, feature_map_dims):
         dist = torch.cdist(patch, self.patch_lib.to(self.device))
