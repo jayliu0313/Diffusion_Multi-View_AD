@@ -37,16 +37,13 @@ def add_random_masked(image, scale = 0.3, prob = 0.8):
         
 #     return out
 
-def gauss_noise_tensor(img, max_range = 0.6):
+def gauss_noise_tensor(img, scalar = 0.4):
     assert isinstance(img, torch.Tensor)
     
     dtype = img.dtype
     if not img.is_floating_point():
         img = img.to(torch.float32)
 
-    scalar = torch.rand(img.shape[0]) * (max_range - 0.0) + 0.0
-    scalar = scalar.reshape(-1, 1, 1, 1).to(img.device)
-   
     out = img + scalar * torch.randn_like(img).clamp(-1, 1).to(img.device)
     out = out.clamp(0, 1)
     if out.dtype != dtype:
@@ -151,7 +148,7 @@ class TestLightings(BaseDataset):
             img = self.rgb_transform(img)
             images.append(img)
         images = torch.stack(images)
-        images = gauss_noise_tensor(images)
+        # images = gauss_noise_tensor(images)
         gt = Image.open(gt).convert('L')
         if np.any(gt):
             gt = self.gt_transform(gt)

@@ -6,7 +6,7 @@ from tqdm import tqdm
 from utils.au_pro_util import calculate_au_pro
 from utils.visualize_util import *
 from sklearn.metrics import roc_auc_score
-from core.models.rgb_network import Convolution_AE_v2, Masked_ConvAE_v2, Masked_ConvAE
+from core.models.rgb_network import *
 from core.models.nmap_network import NMap_AE
 
 class Base_Method():
@@ -24,7 +24,9 @@ class Base_Method():
         self.cls_rec_loss = 0.0
         self.reconstruct_path = os.path.join(cls_path, "Reconstruction")
         self.score_type = args.score_type
-
+        
+        self.avg_pool = nn.AvgPool2d(3, stride=None, padding=0, ceil_mode=False, count_include_pad=True, divisor_override=None)
+        self.max_pool = nn.MaxPool2d(3, padding=1)
         if not os.path.exists(self.reconstruct_path):
             os.makedirs(self.reconstruct_path)
 
@@ -32,7 +34,7 @@ class Base_Method():
         if method_name == "nmap_rec":
             self.model = NMap_AE(self.device)
         else:
-            self.model = Masked_ConvAE_v2(self.device)
+            self.model = Masked_ConvAE(self.device)
 
         self.model.to(self.device)
         self.model.eval()
