@@ -7,18 +7,17 @@ from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.contrastive import Contrastive
 from core.models.rgb_network import Masked_ConvAE
-from core.models.network_util import gauss_noise_tensor, add_random_masked
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/fuseFc_crossAttenFu_iAFF_addjitterV2")
+parser.add_argument('--ckpt_path', default="RandomfuseFc_crossAttenFu_Liu_featnoise_V3_fintune")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
 parser.add_argument("--training_mode", default="fuse_fc", help="traing type: mean, fuse_fc, fuse_both, random_both")
 parser.add_argument("--model", default="Masked_Conv", help="traing type: Conv, Conv_Ins, Masked_Conv")
-parser.add_argument("--load_ckpt", default=None)
+parser.add_argument("--load_ckpt", default="checkpoints/RandomfuseFc_crossAttenFu_Liu_featnoise_V3/best_ckpt.pth")
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=6)
@@ -217,38 +216,22 @@ class Fuse_fc_Rec(Train_Conv_Base):
             epoch_fc_loss = 0.0
             for lightings, noise_imgs, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
-                noise_imgs = noise_imgs.to(device)
-                in_ = lightings.to(device)
-                noise_imgs = noise_imgs.reshape(-1, 3, args.image_size, args.image_size)
-                noise_imgs = gauss_noise_tensor(noise_imgs)
-                fc, fu = self.model.encode(noise_imgs)
-                fc = fc.reshape(-1, 6, 256, 28, 28)
-                fu = fu.reshape(-1, 6, 256, 28, 28)
-            
-                rec_loss = 0.0
-                # fc_loss = 0.0
-                for i in range(6):
-                    for j in range(6):
-                        out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
-                        rec_loss += self.criterion(in_[:, j, :, :, :], out)
-                        # if i != j:
-                        #     fc_loss += self.loss_feature(fc[:, i, :, :, :], fc[:, j, :, :, :])
-                # fc_loss /= 30
-                # fc_loss *= 10
-                rec_loss /= 36
-                # print(rec_loss)
-                loss = rec_loss
+                lightings = lightings.to(device)
+                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
+
+                out, fc_loss = self.model(lightings)
+                rec_loss = self.criterion(lightings, out)            
+                loss = rec_loss + fc_loss
                 loss.backward()
               
                 self.optimizer.step()
                 epoch_loss += loss.item()
                 epoch_rec_loss += rec_loss.item() 
-                # epoch_fc_loss += fc_loss.item()
+                epoch_fc_loss += fc_loss.item()
 
             epoch_loss /= len(data_loader)
             epoch_rec_loss /= len(data_loader)
             epoch_fc_loss /= len(data_loader)
-            self.total_loss += epoch_loss
             
             print('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, FC Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_loss, epoch_fc_loss))
 
@@ -259,24 +242,21 @@ class Fuse_fc_Rec(Train_Conv_Base):
                 epoch_val_fc_loss = 0.0
                 with torch.no_grad():
                     for lightings, noise_imgs, _ in val_loader:
-                        noise_imgs = noise_imgs.to(device)
-                        in_ = lightings.to(device)
-                        noise_imgs = noise_imgs.reshape(-1, 3, args.image_size, args.image_size) 
-                        fc, fu = self.model.encode(noise_imgs)
-                        fc = fc.reshape(-1, 6, 256, 28, 28)
-                        fu = fu.reshape(-1, 6, 256, 28, 28)
-                    
-                        rec_loss = 0.0
-                        # fc_loss = 0.0
-                        for i in range(6):
-                            for j in range(6):
-                                out = self.model.decode(fc[:, i, :, :, :], fu[:, j, :, :, :])
-                                rec_loss += self.criterion(in_[:, j, :, :, :], out)
-                        epoch_val_rec_loss += (rec_loss.item() / 36)
-                        # epoch_val_fc_loss += (fc_loss.item() / 30)
+                        lightings = lightings.to(device)
+                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
+
+                        out, fc_loss = self.model(lightings)
+                        rec_loss = self.criterion(lightings, out)            
+                        loss = rec_loss + fc_loss
+
+                        epoch_val_loss += loss.item()
+                        epoch_val_rec_loss += rec_loss.item() 
+                        epoch_val_fc_loss += fc_loss.item()
+                        
                 epoch_val_rec_loss /= len(val_loader)
                 epoch_val_fc_loss /= len(val_loader)
-                epoch_val_loss = epoch_val_rec_loss + epoch_val_fc_loss
+                epoch_val_loss /= len(val_loader)
+
                 print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Validation Loss: {epoch_val_loss:.6f}, Rec Loss: {epoch_val_rec_loss:.6f}, FC Loss: {epoch_val_fc_loss:.6f}")
                 self.val_log_file.write('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, FC Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss, epoch_val_rec_loss, epoch_val_fc_loss))
 
@@ -543,7 +523,7 @@ class Random_Both_Rec(Train_Conv_Base):
  
 
 if __name__ == '__main__':
-    runner = fuse_fc_Rec_v2(args)
+    runner = Fuse_fc_Rec(args)
     # if args.training_mode == "mean":
     #     runner = Mean_Rec(args)
     # elif args.training_mode == "fuse_fc":

@@ -19,27 +19,27 @@ class Convolution_AE(nn.Module):
         self.maxpool = nn.MaxPool2d(2)
         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
 
-        self.common_MLP = nn.Sequential(
-            nn.Conv2d(channel * 8, channel * 8, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Conv2d(channel * 8, channel * 8, 1, 1),
-        )
+        self.common_MLP = nn.Conv2d(channel * 8, channel * 8, 1, 1)
+        # nn.Sequential(
+        #     nn.Conv2d(channel * 8, channel * 8, 3, padding=1),
+        #     nn.ReLU(inplace=True),
+        #     nn.Conv2d(channel * 8, channel * 8, 1, 1),
+        # )
 
-        self.unique_MLP = nn.Sequential(
-            nn.Conv2d(channel * 8, channel * 8, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-            nn.Conv2d(channel * 8, channel * 8, 1, 1),
+        self.unique_MLP = nn.Conv2d(channel * 8, channel * 8, 1, 1)
+        # nn.Sequential(
+        #     nn.Conv2d(channel * 8, channel * 8, 3, padding=1),
+        #     nn.ReLU(inplace=True),
+        #     nn.Conv2d(channel * 8, channel * 8, 1, 1),
             
-        )
+        # )
 
-        self.fusion = nn.Sequential(
-            nn.Conv2d(channel * 8, channel * 8, 1, 1),
-            nn.ReLU(inplace=True),
-            nn.Dropout(),
-        )
-        
+        self.fusion = nn.Conv2d(channel * 8, channel * 8, 1, 1)
+        # nn.Sequential(
+        #     nn.Conv2d(channel * 8, channel * 8, 1, 1),
+        #     nn.ReLU(inplace=True),
+        # )
+        self.relu = nn.ReLU(inplace=True)
         self.dconv_up3 = double_conv(channel * 8, channel * 4)
         self.dconv_up2 = double_conv(channel * 4, channel * 2)
         self.dconv_up1 = double_conv(channel * 2, channel)
@@ -54,7 +54,7 @@ class Convolution_AE(nn.Module):
     def forward(self, lighting):
         fc, fu = self.encode(lighting)
         out = self.decode(fc, fu)
-        return fc, out
+        return out
 
     def encode(self, lighting):
         
@@ -77,7 +77,7 @@ class Convolution_AE(nn.Module):
     def decode(self, fc, fu):
         cat_feature = fc + fu
             
-        x = self.fusion(cat_feature)
+        x = self.relu(self.fusion(cat_feature))
 
         x = self.upsample(x)        
         
@@ -134,7 +134,7 @@ class Convolution_AE(nn.Module):
         for param in self.parameters():
             param.requires_grad = False
 
-# V1
+# V3
 class Masked_ConvAE(nn.Module):
     def __init__(self, device, channel=32):
         super(Masked_ConvAE, self).__init__()
@@ -152,31 +152,23 @@ class Masked_ConvAE(nn.Module):
         self.common_MLP = nn.Sequential(
             MaskedConv2d_3x3(channel * 8, channel * 8, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(channel * 8, channel * 8, 1, 1),
+            nn.Conv2d(channel * 8, channel * 8,  1, 1),
         )
         
-        self.fusion_fc = nn.Sequential(
-            nn.Conv2d(channel * 8 * 6, channel * 8, 1, 1),
-        )
-        # self.fuse_fc = nn.Sequential(
-        #     nn.Conv2d(channel * 8 * 6, channel * 8, 1, 1),
-        # )
-
         self.unique_MLP = nn.Sequential(
             MaskedConv2d_3x3(channel * 8, channel * 8, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(channel * 8, channel * 8, 1, 1),
+            nn.Conv2d(channel * 8, channel * 8,  1, 1),
         )
 
         self.cross_atten = CrossAttention()
 
-        # self.fuse_both = iAFF(channel * 8, 4)
-        self.fusion = nn.Sequential(
+        self.fuse_both = nn.Sequential(
             nn.ReLU(inplace=True),
             nn.Conv2d(channel * 8, channel * 8, 1, 1),
             nn.ReLU(inplace=True),
         )
-        
+
         self.dconv_up3 = masked_double_conv(channel * 8, channel * 4)
         self.dconv_up2 = masked_double_conv(channel * 4, channel * 2)
         self.dconv_up1 = masked_double_conv(channel * 2, channel)
@@ -188,26 +180,38 @@ class Masked_ConvAE(nn.Module):
             nn.Sigmoid(),                            
         )
 
+        self.feature_loss = torch.nn.MSELoss()
+
     def forward(self, lighting):
         # add_random_masked(lighting)
-        # lighting = gauss_noise_tensor(lighting)
-        fc, fu = self.encode(lighting)
-        concat_fc = fc.reshape(-1, 6 * 256, 28, 28)
+        # if self.training:
+        #     lighting = gauss_noise_tensor(lighting)
 
-        # fused_fc = self.fuse_fc(concat_fc)
-        fused_fc = self.fusion_fc(concat_fc)
+        x = self.encode(lighting)
 
-        fused_fc = fused_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
-        fused_fc = fused_fc.reshape(-1, 256, 28, 28)
+        if self.training:
+            x = add_jitter(x, 20, 1)
+
+        fc = self.common_MLP(x)
+        fu = self.unique_MLP(x)
+        _, C, H ,W = fc.size()
+        fc = fc.reshape(-1, 6, C, H, W)
+        mean_fc = torch.mean(fc, dim = 1)
+        mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
+        loss_fc = self.feature_loss(fc, mean_fc)
+
+        random_indices = torch.randperm(6)
+        fc = fc[:, random_indices, :, :]
+        fc = fc.reshape(-1, C, H, W)
+
         atten_fu = self.cross_atten(fu.reshape(-1, 6, 256, 28, 28))
-        fused_feature = fused_fc + atten_fu
-            
-        x = self.fusion(fused_feature)
+        x = self.fuse_both(fc + atten_fu)
+        
         out = self.decode(x)
-        return out
+        return out, loss_fc
 
-    def encode(self, lighting):
-        conv1 = self.dconv_down1(lighting.to(self.device))
+    def encode(self, x):
+        conv1 = self.dconv_down1(x)
         
         x = self.maxpool(conv1)
 
@@ -219,12 +223,8 @@ class Masked_ConvAE(nn.Module):
     
         x = self.dconv_down4(x)
 
-        # if self.training:
-        #     x = add_jitter(x, 20, 1)
-    
-        fc = self.common_MLP(x)
-        fu = self.unique_MLP(x)
-        return fc, fu
+        
+        return x
 
     def decode(self, x):
         x = self.upsample(x)        
@@ -244,7 +244,7 @@ class Masked_ConvAE(nn.Module):
         for param in self.parameters():
             param.requires_grad = False
 
-# V2
+# V1
 # class Masked_ConvAE(nn.Module):
 #     def __init__(self, device, channel=32):
 #         super(Masked_ConvAE, self).__init__()
@@ -255,6 +255,217 @@ class Masked_ConvAE(nn.Module):
 #         self.dconv_down2 = masked_double_conv(channel, channel * 2)
 #         self.dconv_down3 = masked_double_conv(channel * 2, channel * 4)
 #         self.dconv_down4 = masked_double_conv(channel * 4, channel * 8)        
+        
+#         self.maxpool = nn.MaxPool2d(2)
+#         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
+
+#         self.common_MLP = nn.Sequential(
+#             MaskedConv2d_3x3(channel * 8, channel * 8, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(channel * 8, channel * 8, 1, 1),
+#         )
+        
+#         self.fusion_fc = nn.Sequential(
+#             nn.Conv2d(channel * 8 * 6, channel * 8, 1, 1),
+#         )
+#         # self.fuse_fc = nn.Sequential(
+#         #     nn.Conv2d(channel * 8 * 6, channel * 8, 1, 1),
+#         # )
+
+#         self.unique_MLP = nn.Sequential(
+#             MaskedConv2d_3x3(channel * 8, channel * 8, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(channel * 8, channel * 8, 1, 1),
+#         )
+
+#         self.cross_atten = CrossAttention()
+
+#         # self.fuse_both = iAFF(channel * 8, 4)
+#         self.fusion = nn.Sequential(
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(channel * 8, channel * 8, 1, 1),
+#             nn.ReLU(inplace=True),
+#         )
+        
+#         self.dconv_up3 = masked_double_conv(channel * 8, channel * 4)
+#         self.dconv_up2 = masked_double_conv(channel * 4, channel * 2)
+#         self.dconv_up1 = masked_double_conv(channel * 2, channel)
+        
+#         self.conv_last = nn.Sequential(
+#             MaskedConv2d_3x3(channel, channel, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(channel, 3, 1, 1),
+#             nn.Sigmoid(),                            
+#         )
+
+#     def forward(self, lighting):
+#         # add_random_masked(lighting)
+#         # lighting = gauss_noise_tensor(lighting)
+#         fc, fu = self.encode(lighting)
+#         concat_fc = fc.reshape(-1, 6 * 256, 28, 28)
+
+#         # fused_fc = self.fuse_fc(concat_fc)
+#         fused_fc = self.fusion_fc(concat_fc)
+
+#         fused_fc = fused_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
+#         fused_fc = fused_fc.reshape(-1, 256, 28, 28)
+#         atten_fu = self.cross_atten(fu.reshape(-1, 6, 256, 28, 28))
+#         fused_feature = fused_fc + atten_fu
+            
+#         x = self.fusion(fused_feature)
+#         out = self.decode(x)
+#         return out
+
+#     def encode(self, lighting):
+#         conv1 = self.dconv_down1(lighting.to(self.device))
+        
+#         x = self.maxpool(conv1)
+
+#         conv2 = self.dconv_down2(x)
+#         x = self.maxpool(conv2)
+        
+#         conv3 = self.dconv_down3(x)
+#         x = self.maxpool(conv3)   
+    
+#         x = self.dconv_down4(x)
+
+#         # if self.training:
+#         #     x = add_jitter(x, 20, 1)
+    
+#         fc = self.common_MLP(x)
+#         fu = self.unique_MLP(x)
+#         return fc, fu
+
+#     def decode(self, x):
+#         x = self.upsample(x)        
+        
+#         x = self.dconv_up3(x)
+#         x = self.upsample(x)              
+
+#         x = self.dconv_up2(x)
+#         x = self.upsample(x)
+        
+#         x = self.dconv_up1(x)
+        
+#         out = self.conv_last(x)
+#         return out
+
+#     def freeze_model(self):
+#         for param in self.parameters():
+#             param.requires_grad = False
+
+# V1.5
+# class Masked_ConvAE(nn.Module):
+#     def __init__(self, device, channel=32):
+#         super(Masked_ConvAE, self).__init__()
+#         self.device = device
+#         self.image_chennels = 3
+#         self.img_size = 224
+#         self.dconv_down1 = masked_double_conv(3, channel)
+#         self.dconv_down2 = masked_double_conv(channel, channel * 2)
+#         self.dconv_down3 = masked_double_conv(channel * 2, channel * 4)
+#         self.dconv_down4 = masked_double_conv(channel * 4, channel * 8)        
+        
+#         self.maxpool = nn.MaxPool2d(2)
+#         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
+
+#         self.common_MLP = nn.Sequential(
+#             MaskedConv2d_3x3(channel * 8, channel * 8, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(channel * 8, channel * 8,  1, 1),
+#         )
+        
+#         self.fuse_fc = nn.Sequential(
+#             nn.Conv2d(channel * 8 * 6, channel * 8, 1, 1),
+#         )
+
+#         self.unique_MLP = nn.Sequential(
+#             MaskedConv2d_3x3(channel * 8, channel * 8, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(channel * 8, channel * 8,  1, 1),
+#         )
+
+#         self.cross_atten = CrossAttention()
+
+#         self.fuse_both = iAFF(channel * 8, 4)
+
+#         self.dconv_up3 = masked_double_conv(channel * 8, channel * 4)
+#         self.dconv_up2 = masked_double_conv(channel * 4, channel * 2)
+#         self.dconv_up1 = masked_double_conv(channel * 2, channel)
+        
+#         self.conv_last = nn.Sequential(
+#             MaskedConv2d_3x3(channel, channel, padding=1),
+#             nn.ReLU(inplace=True),
+#             nn.Conv2d(channel, 3, 1, 1),
+#             nn.Sigmoid(),                            
+#         )
+
+#     def forward(self, lighting):
+#         # add_random_masked(lighting)
+#         # lighting = gauss_noise_tensor(lighting)
+#         x = self.encode(lighting)
+
+#         if self.training:
+#             x = add_jitter(x, 20, 1)
+
+#         fc = self.common_MLP(x)
+#         fu = self.unique_MLP(x)
+
+#         concat_fc = fc.reshape(-1, 6 * 256, 28, 28)
+#         fused_fc = self.fuse_fc(concat_fc)
+#         fused_fc = fused_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
+#         fused_fc = fused_fc.reshape(-1, 256, 28, 28)
+
+#         atten_fu = self.cross_atten(fu.reshape(-1, 6, 256, 28, 28))
+#         x = self.fuse_both(fused_fc, atten_fu)
+#         out = self.decode(x)
+#         return out
+
+#     def encode(self, x):
+#         conv1 = self.dconv_down1(x)
+        
+#         x = self.maxpool(conv1)
+
+#         conv2 = self.dconv_down2(x)
+#         x = self.maxpool(conv2)
+        
+#         conv3 = self.dconv_down3(x)
+#         x = self.maxpool(conv3)   
+    
+#         x = self.dconv_down4(x)
+
+        
+#         return x
+
+#     def decode(self, x):
+#         x = self.upsample(x)        
+        
+#         x = self.dconv_up3(x)
+#         x = self.upsample(x)              
+
+#         x = self.dconv_up2(x)
+#         x = self.upsample(x)
+        
+#         x = self.dconv_up1(x)
+        
+#         out = self.conv_last(x)
+#         return out
+
+#     def freeze_model(self):
+#         for param in self.parameters():
+#             param.requires_grad = False
+            
+# V2 with BatchNorm, with Dropout
+# class Masked_ConvAE(nn.Module):
+#     def __init__(self, device, channel=32):
+#         super(Masked_ConvAE, self).__init__()
+#         self.device = device
+#         self.image_chennels = 3
+#         self.img_size = 224
+#         self.dconv_down1 = masked_double_conv(3, channel, norm="batchNorm")
+#         self.dconv_down2 = masked_double_conv(channel, channel * 2, norm="batchNorm")
+#         self.dconv_down3 = masked_double_conv(channel * 2, channel * 4, norm="batchNorm")
+#         self.dconv_down4 = masked_double_conv(channel * 4, channel * 8, norm="batchNorm")        
         
 #         self.maxpool = nn.MaxPool2d(2)
 #         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
@@ -288,11 +499,11 @@ class Masked_ConvAE(nn.Module):
 
 #         self.cross_atten = CrossAttention()
 
-#         self.fuse_both = iAFF(channel * 8, 4)
+#         self.fuse_both = iAFF(channel * 8, 4, norm="batchNorm")
 
-#         self.dconv_up3 = masked_double_conv(channel * 8, channel * 4)
-#         self.dconv_up2 = masked_double_conv(channel * 4, channel * 2)
-#         self.dconv_up1 = masked_double_conv(channel * 2, channel)
+#         self.dconv_up3 = masked_double_conv(channel * 8, channel * 4, norm="batchNorm")
+#         self.dconv_up2 = masked_double_conv(channel * 4, channel * 2, norm="batchNorm")
+#         self.dconv_up1 = masked_double_conv(channel * 2, channel, norm="batchNorm")
         
 #         self.conv_last = nn.Sequential(
 #             MaskedConv2d_3x3(channel, channel, padding=1),
@@ -304,7 +515,8 @@ class Masked_ConvAE(nn.Module):
 
 #     def forward(self, lighting):
 #         # add_random_masked(lighting)
-#         # lighting = gauss_noise_tensor(lighting)
+#         # if self.training:
+#         #     lighting = gauss_noise_tensor(lighting)
 #         x = self.encode(lighting)
 
 #         if self.training:

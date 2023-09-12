@@ -37,14 +37,18 @@ def add_random_masked(image, scale = 0.3, prob = 0.8):
         
 #     return out
 
-def gauss_noise_tensor(img, scalar = 0.4):
+def gauss_noise_tensor(img, max_range = 2):
     assert isinstance(img, torch.Tensor)
     
     dtype = img.dtype
     if not img.is_floating_point():
         img = img.to(torch.float32)
-
-    out = img + scalar * torch.randn_like(img).clamp(-1, 1).to(img.device)
+    img_norm = (
+            img.norm(dim=1).unsqueeze(1) / 3
+        )
+    scalar = torch.rand(img.shape[0]) * (max_range - 0.0) + 0.0
+    scalar = scalar.reshape(-1, 1, 1, 1).to(img.device)
+    out = img + scalar * torch.randn_like(img).to(img.device) * img_norm
     out = out.clamp(0, 1)
     if out.dtype != dtype:
         out = out.to(dtype)

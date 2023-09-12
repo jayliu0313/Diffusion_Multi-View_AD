@@ -28,53 +28,88 @@ class iAFF(nn.Module):
     多特征融合 iAFF
     '''
 
-    def __init__(self, channels=256, r=4):
+    def __init__(self, channels=256, r=4, norm=None):
         super(iAFF, self).__init__()
         inter_channels = int(channels // r)
+        if norm == None:
+            # 本地注意力
+            self.local_att = nn.Sequential(
+                nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
+            )
 
-        # 本地注意力
-        self.local_att = nn.Sequential(
-            nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(inter_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(channels),
-        )
+            # 全局注意力
+            self.global_att = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
+            )
 
-        # 全局注意力
-        self.global_att = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(inter_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(channels),
-        )
+            # 第二次本地注意力
+            self.local_att2 = nn.Sequential(
+                nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
+            )
+            # 第二次全局注意力
+            self.global_att2 = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
+            )
 
-        # 第二次本地注意力
-        self.local_att2 = nn.Sequential(
-            nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(inter_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(channels),
-        )
-        # 第二次全局注意力
-        self.global_att2 = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(inter_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(channels),
-        )
+            self.sigmoid = nn.Sigmoid()
+            self.fusion = nn.Sequential(
+                nn.Conv2d(channels, channels, kernel_size=1, stride=1, padding=0),
+            
+                nn.ReLU(inplace=True),
+            )
+        elif norm == "batchNorm":
+            self.local_att = nn.Sequential(
+                nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(inter_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(channels),
+            )
 
-        self.sigmoid = nn.Sigmoid()
-        self.fusion = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=1, stride=1, padding=0),
-            nn.BatchNorm2d(channels),
-            nn.ReLU(inplace=True),
-        )
+            # 全局注意力
+            self.global_att = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(inter_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(channels),
+            )
+
+            # 第二次本地注意力
+            self.local_att2 = nn.Sequential(
+                nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(inter_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(channels),
+            )
+            # 第二次全局注意力
+            self.global_att2 = nn.Sequential(
+                nn.AdaptiveAvgPool2d(1),
+                nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(inter_channels),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(channels),
+            )
+
+            self.sigmoid = nn.Sigmoid()
+            self.fusion = nn.Sequential(
+                nn.Conv2d(channels, channels, kernel_size=1, stride=1, padding=0),
+                nn.BatchNorm2d(channels),
+                nn.ReLU(inplace=True),
+            )
 
     def forward(self, fc, fu):
         xa = fc + fu
@@ -162,12 +197,19 @@ def masked_double_conv(in_channels, out_channels, norm=None):
     if norm == None:
         return nn.Sequential(
             MaskedConv2d_3x3(in_channels, out_channels, padding=1),
-            # nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
             MaskedConv2d_3x3(out_channels, out_channels, padding=1),
-            # nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-        )   
+        )
+    elif norm == "batchNorm":
+        return nn.Sequential(
+            MaskedConv2d_3x3(in_channels, out_channels, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_3x3(out_channels, out_channels, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
     elif norm == "instanceNorm":
          return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, 3, padding=1),
@@ -178,16 +220,18 @@ def masked_double_conv(in_channels, out_channels, norm=None):
             nn.ReLU(inplace=True),
         )       
 
-def gauss_noise_tensor(img, max_range = 0.4):
+def gauss_noise_tensor(img, max_range = 1):
     assert isinstance(img, torch.Tensor)
     
     dtype = img.dtype
     if not img.is_floating_point():
         img = img.to(torch.float32)
-
+    img_norm = (
+            img.norm(dim=1).unsqueeze(1) / 3
+        )
     scalar = torch.rand(img.shape[0]) * (max_range - 0.0) + 0.0
     scalar = scalar.reshape(-1, 1, 1, 1).to(img.device)
-    out = img + scalar * torch.randn_like(img).clamp(-1, 1).to(img.device)
+    out = img + scalar * torch.randn_like(img).to(img.device) * img_norm
     out = out.clamp(0, 1)
     if out.dtype != dtype:
         out = out.to(dtype)

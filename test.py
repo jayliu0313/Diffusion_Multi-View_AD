@@ -10,11 +10,11 @@ import pandas as pd
 
 parser = argparse.ArgumentParser(description='test')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/fuseFc_crossAttenFu_withRandomScaleNoise_noiAFF/best_ckpt.pth")
+parser.add_argument('--ckpt_path', default="checkpoints/RandomfuseFc_crossAttenFu_Liu_inputnoise_V3_fintune/best_ckpt.pth")
 parser.add_argument('--output_dir', default="./output")
 parser.add_argument('--dataset_type', default="eyecandies")
 parser.add_argument('--method_name', default="rec", help="mean_rec, rec, recur_rec, nmap_rec, memory")
-parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score")
+parser.add_argument('--score_type', default=1, type=int, help="0 is max score, 1 is mean score")
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 parser.add_argument("--workers", default=8)
