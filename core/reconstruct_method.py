@@ -9,44 +9,31 @@ class Base_Reconstruct(Base_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
 
-    def compute_score(self, score_maps, top_k = 3):
+    def compute_score(self, score_maps, top_k = 4):
         six_map_patches = []
-        for i in range(6):
-            patches = patchify(t2np(score_maps[i, :, :, :].permute(2, 1, 0)), (8, 8, 1), 8)
-            sum_of_patch_values = torch.tensor(np.mean(patches, axis=(3, 4)).flatten())
-            six_map_patches.extend(sum_of_patch_values)
+        for i in range(score_maps.shape[0]):
+            patches = patchify(t2np(score_maps[i, :, :, :].permute(2, 1, 0)), (8, 8, 1), 2)
+            patches_score = torch.tensor(np.mean(patches, axis=(3, 4)).flatten())
+            six_map_patches.append(patches_score)
         six_map_patches = torch.stack(six_map_patches)
-
-        top_scores, _ = torch.topk(sum_of_patch_values.flatten(), top_k)
+        mean_map_patches = torch.mean(six_map_patches, dim=0)
+        top_scores, _ = torch.topk(mean_map_patches, top_k)
         final_score = torch.mean(top_scores)
         return final_score
 
     def compute_max_smap(self, score_maps, lightings):
-        # print(lightings.shape)
-        # lightings = gauss_noise_tensor(lightings)
-        # final_score = -99999
         final_map = torch.zeros((1, self.image_size, self.image_size))
         img = torch.zeros((3, self.image_size, self.image_size))
         final_map, _ = torch.max(score_maps, 0)
-        topk_score, _ = torch.topk(final_map.flatten(), 50)
+        topk_score, _ = torch.topk(final_map.flatten(), 25)
         final_score = torch.mean(topk_score)
         img = lightings[5, :, :, :]
-        # print(score_maps.shape)
-        # print(final_map.shape)
-        # for i in range(6):
-        #     score_map = score_maps[i, :, :, :]
-        #     topk_score, _ = torch.topk(score_map.flatten(), 20)
-        #     score = torch.mean(topk_score)
-        #     if(final_score < score):
-        #         final_score = score  
-        #         # final_map = score_map
-        #         img = lightings[i, :, :, :]
         return final_map, final_score, img
     
     def compute_mean_smap(self, score_maps, lightings):
         img = lightings[0, :, :, :]
         final_map = torch.mean(score_maps, dim=0)
-        topk_score, _ = torch.topk(final_map.flatten(), 50)
+        topk_score, _ = torch.topk(final_map.flatten(), 25)
         final_score = torch.mean(topk_score)
         return final_map, final_score, img
     
@@ -99,11 +86,11 @@ class Rec(Base_Reconstruct):
         score_maps = torch.sum(torch.abs(lightings - out), dim=1)
         # score_maps = self.blur(score_maps)
         score_maps = score_maps.unsqueeze(1)
-        final_score = self.compute_score(score_maps)
+        # final_score = self.compute_score(score_maps)
         if(self.score_type == 0):
-            final_map, _, img = self.compute_max_smap(score_maps, lightings)
+            final_map, final_score, img = self.compute_max_smap(score_maps, lightings)
         elif(self.score_type == 1):
-            final_map, _, img = self.compute_mean_smap(score_maps, lightings)
+            final_map, final_score, img = self.compute_mean_smap(score_maps, lightings)
         
         self.image_labels.append(label)
         self.image_preds.append(t2np(final_score))
@@ -112,7 +99,7 @@ class Rec(Base_Reconstruct):
         self.pixel_labels.extend(t2np(gt))
 
         # if item % 5 == 0:
-        display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
+        # display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
 # test method 3
 class Recursive_Rec(Base_Reconstruct):
@@ -134,9 +121,9 @@ class Recursive_Rec(Base_Reconstruct):
         score_maps = score_maps.unsqueeze(1)
 
         if(self.score_type == 0):
-            final_map, final_score, img = self.compute_max_score(score_maps, lightings)
+            final_map, final_score, img = self.compute_max_smap(score_maps, lightings)
         elif(self.score_type == 1):
-            final_map, final_score, img = self.compute_mean_score(score_maps, lightings)
+            final_map, final_score, img = self.compute_mean_smap(score_maps, lightings)
 
         self.image_labels.append(label)
         self.image_preds.append(t2np(final_score))
@@ -160,8 +147,10 @@ class Nmap_Rec(Base_Reconstruct):
         loss = self.criteria(normal, out)
         self.cls_rec_loss += loss.item()
         score_map = torch.sum(torch.abs(normal - out), dim=1)
-        topk_score, _ = torch.topk(score_map.flatten(), 20)
-        final_score = torch.mean(topk_score)
+        score_map = score_map.unsqueeze(0)
+        final_score = self.compute_score(score_map)
+        # topk_score, _ = torch.topk(score_map.flatten(), 20)
+        # final_score = torch.mean(topk_score)
         self.image_labels.append(label)
         self.image_preds.append(t2np(final_score))
         self.image_list.append(t2np(normal.squeeze()))
@@ -171,5 +160,36 @@ class Nmap_Rec(Base_Reconstruct):
         # if item % 5 == 0:
         display_one_img(t2np(normal.squeeze()), t2np(out.squeeze()), self.reconstruct_path, item)
 
+class RGB_Nmap_Rec(Base_Reconstruct):
+    def __init__(self, args, cls_path):
+        super().__init__(args, cls_path)
+    
+    def predict(self, item, lightings, Nmap, gt, label):
+        lightings = lightings.squeeze().to(self.device)
+        out, _ =  self.model(lightings)
+
+        lightings = self.average(lightings)
+        out = self.average(out)
+        
+        loss = self.criteria(lightings, out)
+        
+        self.cls_rec_loss += loss.item()
+        score_maps = torch.sum(torch.abs(lightings - out), dim=1)
+        # score_maps = self.blur(score_maps)
+        score_maps = score_maps.unsqueeze(1)
+        # final_score = self.compute_score(score_maps)
+        if(self.score_type == 0):
+            final_map, final_score, img = self.compute_max_smap(score_maps, lightings)
+        elif(self.score_type == 1):
+            final_map, final_score, img = self.compute_mean_smap(score_maps, lightings)
+        
+        self.image_labels.append(label)
+        self.image_preds.append(t2np(final_score))
+        self.image_list.append(t2np(img))
+        self.pixel_preds.append(t2np(final_map))
+        self.pixel_labels.extend(t2np(gt))
+
+        # if item % 5 == 0:
+        # display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
   

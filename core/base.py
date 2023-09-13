@@ -85,5 +85,5 @@ class Base_Method():
         score_map = self.pixel_preds.reshape(-1, self.image_size, self.image_size)
         gt_mask = np.squeeze(np.array(self.pixel_labels, dtype=np.bool), axis=1)
         
-        visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, self.cls_path)
+        # visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, self.cls_path)
     
