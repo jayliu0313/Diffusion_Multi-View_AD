@@ -12,7 +12,7 @@ class Base_Reconstruct(Base_Method):
     def compute_score(self, score_maps, top_k = 1):
         six_map_patches = []
         for i in range(score_maps.shape[0]):
-            patches = patchify(t2np(score_maps[i, :, :, :].permute(2, 1, 0)), (8, 8, 1), 4)
+            patches = patchify(t2np(score_maps[i, :, :, :].permute(2, 1, 0)), (8, 8, 1), 8)
             patches_score = torch.tensor(np.mean(patches, axis=(3, 4)).flatten())
             six_map_patches.append(patches_score)
         six_map_patches = torch.stack(six_map_patches)
@@ -37,7 +37,7 @@ class Base_Reconstruct(Base_Method):
         final_score = torch.mean(topk_score)
         return final_map, final_score, img
     
-# test method 1
+# test method 1: mean fc to reconstruct each image
 class Mean_Rec(Base_Reconstruct):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
@@ -65,14 +65,14 @@ class Mean_Rec(Base_Reconstruct):
        
         display_mean_fusion(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
-# test method 2
+# test method 2: reconstruct each image (using individual fc and fu)
 class Rec(Base_Reconstruct):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
     
     def predict(self, item, lightings, _, gt, label):
         lightings = lightings.squeeze().to(self.device)
-        out =  self.rgb_model.unique_rec(lightings)
+        out =  self.rgb_model.rec(lightings)
 
         lightings = self.average(lightings)
         out = self.average(out)
@@ -81,7 +81,6 @@ class Rec(Base_Reconstruct):
         
         self.cls_rec_loss += loss.item()
         score_maps = torch.sum(torch.abs(lightings - out), dim=1)
-        # score_maps = self.blur(score_maps)
         score_maps = score_maps.unsqueeze(1)
         final_score = self.compute_score(score_maps)
         if(self.score_type == 0):
@@ -98,7 +97,7 @@ class Rec(Base_Reconstruct):
         # if item % 5 == 0:
         # display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
-# test method 3
+# test method 3: not use
 class Recursive_Rec(Base_Reconstruct):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
@@ -131,7 +130,7 @@ class Recursive_Rec(Base_Reconstruct):
         # if item % 5 == 0:
         display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
-# test method 4
+# normal map reconstruction
 class Nmap_Rec(Base_Reconstruct):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
@@ -157,6 +156,7 @@ class Nmap_Rec(Base_Reconstruct):
         # if item % 5 == 0:
         display_one_img(t2np(normal.squeeze()), t2np(out.squeeze()), self.reconstruct_path, item)
 
+# test method 5: normal map and image reconstruction
 class RGB_Nmap_Rec(Base_Reconstruct):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
@@ -164,7 +164,7 @@ class RGB_Nmap_Rec(Base_Reconstruct):
     def predict(self, item, lightings, nmap, gt, label):
         lightings = lightings.squeeze().to(self.device)
         
-        rgb_out =  self.rgb_model.unique_rec(lightings)
+        rgb_out =  self.rgb_model.rec(lightings)
         
         lightings = self.average(lightings)
         rgb_out = self.average(rgb_out)

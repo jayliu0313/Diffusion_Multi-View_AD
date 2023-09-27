@@ -374,7 +374,7 @@ class Masked_ConvAE(nn.Module):
         return out
       
       
-    def unique_rec(self, x):
+    def rec(self, x):
         x = self.encode(x)
         fc = self.common_MLP(x)
         fu = self.unique_MLP(x)

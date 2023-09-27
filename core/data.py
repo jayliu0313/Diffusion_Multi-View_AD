@@ -98,7 +98,8 @@ class BaseDataset(Dataset):
         self.rgb_transform = transforms.Compose(
             [transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.BICUBIC),
              transforms.ToTensor()])    
-    
+
+# load testing image and testing normal map    
 class TestLightings(BaseDataset):
     def __init__(self, class_name, img_size, dataset_path):
         super().__init__(split="test_public", class_name=class_name, img_size=img_size, dataset_path=dataset_path)
@@ -164,6 +165,7 @@ class TestLightings(BaseDataset):
             label = 0
         return (images, normal_map), gt[:1], label
 
+# not use
 class MemoryLightings(BaseDataset):
     def __init__(self, class_name, img_size, dataset_path):
         super().__init__(split="train", class_name=class_name, img_size=img_size, dataset_path=dataset_path)
@@ -217,6 +219,7 @@ class MemoryLightings(BaseDataset):
         images = torch.stack(images)
         return images, normal_map
 
+# load training image   
 class TrainLightings(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies_preprocessed'):
         self.size = img_size
@@ -277,6 +280,7 @@ class TrainLightings(Dataset):
         nmap = self.rgb_transform(normal)
         return images, nmap
 
+# load validation image using for training 
 class ValLightings(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies'):
         self.size = img_size
@@ -340,6 +344,7 @@ class ValLightings(Dataset):
         nmap = self.rgb_transform(normal)
         return images, nmap
 
+# load training normal map
 class TrainNmap(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies_preprocessed'):
         self.size = img_size
@@ -376,6 +381,7 @@ class TrainNmap(Dataset):
         nmap = self.rgb_transform(nmap)
         return nmap
 
+# load training normal map using for training 
 class ValNmap(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies'):
         self.size = img_size

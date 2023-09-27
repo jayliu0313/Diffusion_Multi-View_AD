@@ -109,3 +109,7 @@ Epoch 535: Loss: 0.000194, Rec Loss: 0.000193, FC Loss: 0.000000
 Epoch 540: Loss: 0.000249, Rec Loss: 0.000249, FC Loss: 0.000000
 Epoch 545: Loss: 0.000188, Rec Loss: 0.000188, FC Loss: 0.000000
 Epoch 550: Loss: 0.000185, Rec Loss: 0.000185, FC Loss: 0.000000
+Epoch 555: Loss: 0.000186, Rec Loss: 0.000186, FC Loss: 0.000000
+Epoch 560: Loss: 0.000177, Rec Loss: 0.000177, FC Loss: 0.000000
+Epoch 565: Loss: 0.000174, Rec Loss: 0.000173, FC Loss: 0.000000
+Epoch 570: Loss: 0.000191, Rec Loss: 0.000191, FC Loss: 0.000000
