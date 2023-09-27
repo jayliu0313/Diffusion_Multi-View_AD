@@ -212,15 +212,15 @@ def masked_double_conv(in_channels, out_channels, norm=None):
         )
     elif norm == "instanceNorm":
          return nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=1),
+            MaskedConv2d_3x3(in_channels, out_channels, padding=1),
             nn.InstanceNorm2d(in_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=1),
+            MaskedConv2d_3x3(in_channels, out_channels, padding=1),
             nn.InstanceNorm2d(out_channels),
             nn.ReLU(inplace=True),
-        )       
-
-def gauss_noise_tensor(img, max_range = 1):
+        )
+   
+def gauss_noise_tensor(img, max_range = 1.2):
     assert isinstance(img, torch.Tensor)
     
     dtype = img.dtype

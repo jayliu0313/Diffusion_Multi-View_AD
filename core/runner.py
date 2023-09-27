@@ -13,21 +13,20 @@ class Runner():
             os.makedirs(cls_path)
 
         self.args = args
-        if args.is_nmap == True:
+        if args.method_name == "rgb_nmap_rec":
             self.method = RGB_Nmap_Rec(args, cls_path)
+        elif args.method_name == "mean_rec":
+            self.method = Mean_Rec(args, cls_path)
+        elif args.method_name == "rec":
+            self.method = Rec(args, cls_path)
+        elif args.method_name == "recur_rec":
+            self.method = Recursive_Rec(args, cls_path)
+        elif args.method_name == "nmap_rec":
+            self.method = Nmap_Rec(args, cls_path)
+        elif args.method_name == "memory":
+            self.method = Memory_Method(args, cls_path)
         else:
-            if args.method_name == "mean_rec":
-                self.method = Mean_Rec(args, cls_path)
-            elif args.method_name == "rec":
-                self.method = Rec(args, cls_path)
-            elif args.method_name == "recur_rec":
-                self.method = Recursive_Rec(args, cls_path)
-            elif args.method_name == "nmap_rec":
-                self.method = Nmap_Rec(args, cls_path)
-            elif args.method_name == "memory":
-                self.method = Memory_Method(args, cls_path)
-            else:
-                return TypeError
+            return TypeError
         self.cls = cls
         self.log_file = open(osp.join(cls_path, "class_score.txt"), "a", 1)
         self.method_name = args.method_name

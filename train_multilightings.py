@@ -10,18 +10,18 @@ from core.models.rgb_network import Masked_ConvAE
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="RandomfuseFc_crossAttenFu_Liu_featnoise_V3_fintune")
+parser.add_argument('--ckpt_path', default="RandomfuseFc_AttenFu_LiuV2_bothnoise_alldata")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
 parser.add_argument("--training_mode", default="fuse_fc", help="traing type: mean, fuse_fc, fuse_both, random_both")
 parser.add_argument("--model", default="Masked_Conv", help="traing type: Conv, Conv_Ins, Masked_Conv")
-parser.add_argument("--load_ckpt", default="checkpoints/RandomfuseFc_crossAttenFu_Liu_featnoise_V3/best_ckpt.pth")
+parser.add_argument("--load_ckpt", default=None)
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=6)
-parser.add_argument("--epochs", default=700)
+parser.add_argument("--epochs", default=1000)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 
 # Contrstive Learning
@@ -150,60 +150,6 @@ class Rec(Train_Conv_Base):
         self.train_log_file.close()
         self.val_log_file.close()
 
-class fuse_fc_Rec_v2(Train_Conv_Base):
-    def __init__(self, args):
-        super().__init__(args)
-        
-    def training(self):
-        for self.epoch in range(self.epochs):
-            epoch_loss = 0.0
-            epoch_rec_loss = 0.0
-            epoch_fc_loss = 0.0
-            for lightings, noise_imgs, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
-                self.optimizer.zero_grad()
-
-                lightings = lightings.reshape(-1, 3, 224, 224).to(device)
-
-                out = self.model(lightings)
-
-                loss = self.criterion(lightings, out)
-                loss.backward()
-              
-                self.optimizer.step()
-                epoch_loss += loss.item()
-                
-            epoch_loss /= len(data_loader)
-        
-            
-            print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
-
-            if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
-                self.model.eval()
-                epoch_val_loss = 0.0
-                epoch_val_rec_loss = 0.0
-                epoch_val_fc_loss = 0.0
-                with torch.no_grad():
-                    for lightings, noise_imgs, _ in val_loader:
-                        lightings = lightings.reshape(-1, 3, 224, 224).to(device)
-                        out = self.model(lightings)
-                        loss = self.criterion(lightings, out)
-                        epoch_val_loss += loss.item()
-
-                epoch_val_loss /= len(val_loader)
-                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Validation Loss: {epoch_val_loss:.6f}")
-                self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
-
-                if epoch_val_loss < self.best_val_loss:
-                    self.best_val_loss = epoch_val_loss
-                    self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
-                    print("Save the best checkpoint")
-
-            self.train_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_loss))
-
-        self.save_ckpt(epoch_loss, "last_ckpt.pth")
-        self.train_log_file.close()
-        self.val_log_file.close()
-
 class Fuse_fc_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
@@ -214,7 +160,7 @@ class Fuse_fc_Rec(Train_Conv_Base):
             epoch_loss = 0.0
             epoch_rec_loss = 0.0
             epoch_fc_loss = 0.0
-            for lightings, noise_imgs, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+            for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
                 lightings = lightings.to(device)
                 lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
@@ -241,7 +187,7 @@ class Fuse_fc_Rec(Train_Conv_Base):
                 epoch_val_rec_loss = 0.0
                 epoch_val_fc_loss = 0.0
                 with torch.no_grad():
-                    for lightings, noise_imgs, _ in val_loader:
+                    for lightings, _ in val_loader:
                         lightings = lightings.to(device)
                         lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
 

@@ -275,7 +275,7 @@ class TrainLightings(Dataset):
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
-        return images, images, nmap
+        return images, nmap
 
 class ValLightings(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies'):
@@ -338,9 +338,79 @@ class ValLightings(Dataset):
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
-        return images, images, nmap
+        return images, nmap
 
+class TrainNmap(Dataset):
+    def __init__(self, img_size=224, dataset_path='datasets/eyecandies_preprocessed'):
+        self.size = img_size
+        self.rgb_transform = transforms.Compose(
+        [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
+         transforms.ToTensor(),
+        ])
+        self.img_path = dataset_path
+        self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
+    def load_dataset(self):
+        data_tot_paths = []
+        tot_labels = []
+        normal_paths = []
+
+        for cls in eyecandies_classes():
+            normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
+        
+        normal_paths.sort()     
+        
+        sample_paths = list(zip(normal_paths))
+        
+        data_tot_paths.extend(sample_paths)
+        tot_labels.extend([0] * len(sample_paths))
+        return data_tot_paths, tot_labels
+
+    def __len__(self):
+        return len(self.data_paths)
+
+    def __getitem__(self, idx):
+        img_path, label = self.data_paths[idx], self.labels[idx]
+        nmap_path = img_path[0]
+        nmap = Image.open(nmap_path).convert('RGB')
+        nmap = self.rgb_transform(nmap)
+        return nmap
+
+class ValNmap(Dataset):
+    def __init__(self, img_size=224, dataset_path='datasets/eyecandies'):
+        self.size = img_size
+        self.rgb_transform = transforms.Compose(
+        [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
+         transforms.ToTensor(),
+        ])
+        self.img_path = dataset_path
+        self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
+
+    def load_dataset(self):
+        data_tot_paths = []
+        tot_labels = []
+        normal_paths = []
+
+        for cls in eyecandies_classes():
+            normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
+
+        normal_paths.sort()     
+
+        sample_paths = list(zip(normal_paths))
+    
+        data_tot_paths.extend(sample_paths)
+        tot_labels.extend([0] * len(sample_paths))
+        return data_tot_paths, tot_labels
+
+    def __len__(self):
+        return len(self.data_paths)
+
+    def __getitem__(self, idx):
+        img_path, label = self.data_paths[idx], self.labels[idx]
+        nmap_path = img_path[0]
+        nmap = Image.open(nmap_path).convert('RGB')
+        nmap = self.rgb_transform(nmap)
+        return nmap
 
 def test_lightings_loader(args, cls, split):
     if split == 'memory':
@@ -362,3 +432,17 @@ def val_lightings_loader(args):
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=False, drop_last=True,
                               pin_memory=True)
     return data_loader
+
+def train_nmap_loader(args):
+    dataset = TrainNmap(args.image_size, args.data_path)
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=True, drop_last=True,
+                              pin_memory=True)
+    return data_loader
+
+def val_nmap_loader(args):
+    dataset = ValNmap(args.image_size, args.data_path)
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=False, drop_last=True,
+                              pin_memory=True)
+    return data_loader
+
+

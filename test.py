@@ -10,14 +10,13 @@ import pandas as pd
 
 parser = argparse.ArgumentParser(description='test')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--method_name', default="rec", help="mean_rec, rec, recur_rec, nmap_rec, memory")
-parser.add_argument('--is_nmap', default=True, type=bool)
-parser.add_argument('--rgb_ckpt_path', default="checkpoints/RandomfuseFc_crossAttenFu_Liu_inputnoise_V3_fintune/best_ckpt.pth")
-parser.add_argument('--nmap_ckpt_path', default="/mnt/home_6T/public/jayliu0313/check_point/mil_test/Nmap_Rec/best_ckpt.pth")
+parser.add_argument('--method_name', default="mean_rec", help="rgb_nmap_rec, mean_rec, rec, recur_rec, nmap_rec, memory")
+parser.add_argument('--score_type', default=1, type=int, help="0 is max score, 1 is mean score")
+parser.add_argument('--rgb_ckpt_path', default="checkpoints/RandomfuseFc_crossAttenFu_Liu_datanoise_alldata/best_ckpt.pth")
+parser.add_argument('--nmap_ckpt_path', default="checkpoints/Nmap_maskedAE_addNoiseInput/best_ckpt.pth")
 
 parser.add_argument('--output_dir', default="./output")
 parser.add_argument('--dataset_type', default="eyecandies")
-parser.add_argument('--score_type', default=1, type=int, help="0 is max score, 1 is mean score")
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 parser.add_argument("--workers", default=8)
@@ -39,14 +38,14 @@ def run_eyecandies(args):
         classes = [
         'CandyCane',
         'ChocolateCookie',
-        # 'ChocolatePraline',
-        # 'Confetto',
+        'ChocolatePraline',
+        'Confetto',
         'GummyBear',
-        # 'HazelnutTruffle',
-        # 'LicoriceSandwich',
-        # 'Lollipop',
-        # 'Marshmallow',
-        # 'PeppermintCandy'
+        'HazelnutTruffle',
+        'LicoriceSandwich',
+        'Lollipop',
+        'Marshmallow',
+        'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = []

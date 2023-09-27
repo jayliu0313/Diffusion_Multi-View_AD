@@ -3,12 +3,12 @@ import argparse
 import os
 import os.path as osp
 from tqdm import tqdm
-from core.data import train_lightings_loader, val_lightings_loader
+from core.data import train_nmap_loader, val_nmap_loader
 from core.models.nmap_network import NMap_AE
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/Normal_Rec")
+parser.add_argument('--ckpt_path', default="./checkpoints/Nmap_maskedAE_addBoth")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
@@ -17,7 +17,7 @@ parser.add_argument("--load_ckpt", default=None)
 parser.add_argument("--learning_rate", default=0.0003)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=4)
-parser.add_argument("--epochs", default=700)
+parser.add_argument("--epochs", default=1000)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 
 # Contrstive Learning
@@ -30,8 +30,8 @@ cuda_idx = str(args.CUDA)
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= cuda_idx
 
-data_loader = train_lightings_loader(args, train_type="normal_only")
-val_loader = val_lightings_loader(args, val_type="normal_only")
+data_loader = train_nmap_loader(args)
+val_loader = val_nmap_loader(args)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 print("current device:", device)
@@ -97,10 +97,10 @@ class Train_Nmap():
                 self.model.eval()
                 epoch_val_loss = 0.0
                 with torch.no_grad():
-                    for normal in val_loader:
-                        normal = normal.to(device)
-                        out = self.model(normal)
-                        loss = self.criterion(normal, out)
+                    for nmap in val_loader:
+                        nmap = nmap.to(device)
+                        out = self.model(nmap)
+                        loss = self.criterion(nmap, out)
                     
                         epoch_val_loss += loss.item()
 

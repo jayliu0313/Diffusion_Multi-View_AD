@@ -44,10 +44,7 @@ class Mean_Rec(Base_Reconstruct):
     
     def predict(self, item, lightings, _, gt, label):
         lightings = lightings.squeeze().to(self.device)
-        fc, fu =  self.model.encode(lightings)
-        fc_mean = torch.mean(fc, dim=0)
-        fc_mean = fc_mean.unsqueeze(0).repeat(6, 1, 1, 1)
-        out = self.model.decode(fc_mean, fu)
+        out =  self.rgb_model.mean_rec(lightings)
         loss = self.criteria(lightings, out)
         self.cls_rec_loss += loss.item()
 
@@ -75,7 +72,7 @@ class Rec(Base_Reconstruct):
     
     def predict(self, item, lightings, _, gt, label):
         lightings = lightings.squeeze().to(self.device)
-        out, _ =  self.rgb_model(lightings)
+        out =  self.rgb_model.unique_rec(lightings)
 
         lightings = self.average(lightings)
         out = self.average(out)
@@ -86,11 +83,11 @@ class Rec(Base_Reconstruct):
         score_maps = torch.sum(torch.abs(lightings - out), dim=1)
         # score_maps = self.blur(score_maps)
         score_maps = score_maps.unsqueeze(1)
-        # final_score = self.compute_score(score_maps)
+        final_score = self.compute_score(score_maps)
         if(self.score_type == 0):
-            final_map, final_score, img = self.compute_max_smap(score_maps, lightings)
+            final_map, _, img = self.compute_max_smap(score_maps, lightings)
         elif(self.score_type == 1):
-            final_map, final_score, img = self.compute_mean_smap(score_maps, lightings)
+            final_map, _, img = self.compute_mean_smap(score_maps, lightings)
         
         self.image_labels.append(label)
         self.image_preds.append(t2np(final_score))
@@ -166,7 +163,9 @@ class RGB_Nmap_Rec(Base_Reconstruct):
     
     def predict(self, item, lightings, nmap, gt, label):
         lightings = lightings.squeeze().to(self.device)
-        rgb_out, _ =  self.rgb_model(lightings)
+        
+        rgb_out =  self.rgb_model.unique_rec(lightings)
+        
         lightings = self.average(lightings)
         rgb_out = self.average(rgb_out)
         loss = self.criteria(lightings, rgb_out)
@@ -197,7 +196,7 @@ class RGB_Nmap_Rec(Base_Reconstruct):
         self.pixel_preds.append(t2np(final_map))
         self.pixel_labels.extend(t2np(gt))
 
-        # if item % 5 == 0:
-        # display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
+        if item % 5 == 0:
+            display_image(t2np(lightings), t2np(rgb_out), self.reconstruct_path, item)
 
   

@@ -12,7 +12,7 @@ from core.models.nmap_network import NMap_AE
 class Base_Method():
     def __init__(self, args, cls_path):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.load_model(args.is_nmap, args.rgb_ckpt_path, args.nmap_ckpt_path)
+        self.load_model(args.rgb_ckpt_path, args.nmap_ckpt_path)
         self.initialize_score()
 
         self.criteria = torch.nn.MSELoss()    
@@ -32,8 +32,8 @@ class Base_Method():
         if not os.path.exists(self.reconstruct_path):
             os.makedirs(self.reconstruct_path)
 
-    def load_model(self, is_nmap, rgb_ckpt_path, nmap_ckpt_path=None):
-        if is_nmap == True:
+    def load_model(self, rgb_ckpt_path=None, nmap_ckpt_path=None):
+        if nmap_ckpt_path != None:
             print("Load the checkpoint of normal map model...")
             self.nmap_model = NMap_AE(self.device)
             self.nmap_model.to(self.device)
@@ -41,13 +41,14 @@ class Base_Method():
             checkpoint = torch.load(nmap_ckpt_path, map_location=self.device)
             self.nmap_model.load_state_dict(checkpoint['model'])
             self.nmap_model.freeze_model()
-        print("Load the checkpoint of rgb model...")
-        self.rgb_model = Masked_ConvAE(self.device)
-        self.rgb_model.to(self.device)
-        self.rgb_model.eval()
-        checkpoint = torch.load(rgb_ckpt_path, map_location=self.device)
-        self.rgb_model.load_state_dict(checkpoint['model'])
-        self.rgb_model.freeze_model()
+        if rgb_ckpt_path != None:
+            print("Load the checkpoint of rgb model...")
+            self.rgb_model = Masked_ConvAE(self.device)
+            self.rgb_model.to(self.device)
+            self.rgb_model.eval()
+            checkpoint = torch.load(rgb_ckpt_path, map_location=self.device)
+            self.rgb_model.load_state_dict(checkpoint['model'])
+            self.rgb_model.freeze_model()
 
     def initialize_score(self):
         self.image_list = list()
@@ -90,5 +91,5 @@ class Base_Method():
         score_map = self.pixel_preds.reshape(-1, self.image_size, self.image_size)
         gt_mask = np.squeeze(np.array(self.pixel_labels, dtype=np.bool), axis=1)
         
-        # visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, self.cls_path)
+        visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, self.cls_path)
     

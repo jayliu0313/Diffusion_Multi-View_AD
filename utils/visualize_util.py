@@ -33,7 +33,7 @@ def export_test_images(test_img, gts, scores, threshold, output_dir):
         kernel = morphology.disk(2)
         scores_norm = 1.0/scores.max()
         # print(test_img.shape)
-        for i in tqdm(range(0, len(test_img), 1), desc="export heat map image"):
+        for i in tqdm(range(0, len(test_img), 5), desc="export heat map image"):
             img = test_img[i]
             img = denormalization(img)
             
