@@ -1,4 +1,4 @@
-./RandomfuseFc_AttenFu_LiuV2_bothnoise_alldata/*
+RandomfuseFc_AttenFu_LiuV2_bothnoise_alldata/*
 checkpoints/*
 **/__pycache__
 core/models/__pycache__/*
