@@ -23,6 +23,38 @@ class MaskedConv2d_3x3(nn.Module):
         conv_result = self.conv(x)        
         return conv_result
 
+class MaskedConv2d_5x5(nn.Module):
+    def __init__(self, in_channels, out_channels, padding=2, bias=True):
+        super(MaskedConv2d_5x5, self).__init__()
+        kernel_size = 5 
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
+        for i in range(1, 4):
+            for j in range(1, 4):
+                self.conv.weight.data[:, :, i, j] = 0
+                self.conv.weight.data[:, :, i, j].requires_grad = False
+                # print("i:", i)
+                # print("j:", j)
+
+    def forward(self, x):
+        conv_result = self.conv(x)        
+        return conv_result
+
+class MaskedConv2d_7x7(nn.Module):
+    def __init__(self, in_channels, out_channels, padding=3, bias=True):
+        super(MaskedConv2d_7x7, self).__init__()
+        kernel_size = 7
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
+        for i in range(1, 5):
+            for j in range(1, 5):
+                self.conv.weight.data[:, :, i, j] = 0
+                self.conv.weight.data[:, :, i, j].requires_grad = False
+                # print("i:", i)
+                # print("j:", j)
+
+    def forward(self, x):
+        conv_result = self.conv(x)        
+        return conv_result
+    
 class iAFF(nn.Module):
     '''
     多特征融合 iAFF
@@ -219,8 +251,89 @@ def masked_double_conv(in_channels, out_channels, norm=None):
             nn.InstanceNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
+
+def masked7x7_5x5_double_conv(in_channels, out_channels, norm=None):
+    if norm == None:
+        return nn.Sequential(
+            MaskedConv2d_7x7(in_channels, out_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_5x5(out_channels, out_channels),
+            nn.ReLU(inplace=True),
+        )
+    elif norm == "batchNorm":
+        return nn.Sequential(
+            MaskedConv2d_7x7(in_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_5x5(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+    elif norm == "instanceNorm":
+         return nn.Sequential(
+            MaskedConv2d_7x7(in_channels, out_channels),
+            nn.InstanceNorm2d(in_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_5x5(in_channels, out_channels),
+            nn.InstanceNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+         
+def masked5x5_3x3_double_conv(in_channels, out_channels, norm=None):
+    if norm == None:
+        return nn.Sequential(
+            MaskedConv2d_5x5(in_channels, out_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_3x3(out_channels, out_channels),
+            nn.ReLU(inplace=True),
+        )
+    elif norm == "batchNorm":
+        return nn.Sequential(
+            MaskedConv2d_5x5(in_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_3x3(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+    elif norm == "instanceNorm":
+         return nn.Sequential(
+            MaskedConv2d_5x5(in_channels, out_channels),
+            nn.InstanceNorm2d(in_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_3x3(in_channels, out_channels),
+            nn.InstanceNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+def pure_masked5x5_double_conv(in_channels, out_channels, norm=None):
+    if norm == None:
+        return nn.Sequential(
+            MaskedConv2d_5x5(in_channels, out_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_5x5(out_channels, out_channels),
+            nn.ReLU(inplace=True),
+        )
+    elif norm == "batchNorm":
+        return nn.Sequential(
+            MaskedConv2d_5x5(in_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_5x5(out_channels, out_channels),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+    elif norm == "instanceNorm":
+         return nn.Sequential(
+            MaskedConv2d_5x5(in_channels, out_channels),
+            nn.InstanceNorm2d(in_channels),
+            nn.ReLU(inplace=True),
+            MaskedConv2d_5x5(in_channels, out_channels),
+            nn.InstanceNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
    
-def gauss_noise_tensor(img, max_range = 1.2):
+def gauss_noise_tensor(img, max_range = 1.5):
     assert isinstance(img, torch.Tensor)
     
     dtype = img.dtype

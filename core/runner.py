@@ -1,5 +1,5 @@
 from core.data import test_lightings_loader
-from core.reconstruct_method import Mean_Rec, Rec, Recursive_Rec, Nmap_Rec, RGB_Nmap_Rec
+from core.reconstruct_method import Mean_Rec, Rec, Nmap_Repair, Nmap_Rec, RGB_Nmap_Rec
 from core.memory_method import Memory_Method
 from tqdm import tqdm
 import torch
@@ -19,8 +19,8 @@ class Runner():
             self.method = Mean_Rec(args, cls_path)
         elif args.method_name == "rec":
             self.method = Rec(args, cls_path)
-        elif args.method_name == "recur_rec":
-            self.method = Recursive_Rec(args, cls_path)
+        elif args.method_name == "nmap_repair":
+            self.method = Nmap_Repair(args, cls_path)
         elif args.method_name == "nmap_rec":
             self.method = Nmap_Rec(args, cls_path)
         elif args.method_name == "memory":

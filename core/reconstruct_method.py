@@ -12,7 +12,7 @@ class Base_Reconstruct(Base_Method):
     def compute_score(self, score_maps, top_k = 1):
         six_map_patches = []
         for i in range(score_maps.shape[0]):
-            patches = patchify(t2np(score_maps[i, :, :, :].permute(2, 1, 0)), (8, 8, 1), 8)
+            patches = patchify(t2np(score_maps[i, :, :, :].permute(2, 1, 0)), (8, 8, 1), 4)
             patches_score = torch.tensor(np.mean(patches, axis=(3, 4)).flatten())
             six_map_patches.append(patches_score)
         six_map_patches = torch.stack(six_map_patches)
@@ -63,7 +63,7 @@ class Mean_Rec(Base_Reconstruct):
         self.pixel_labels.extend(t2np(gt))
 
        
-        display_mean_fusion(t2np(lightings), t2np(out), self.reconstruct_path, item)
+        # display_mean_fusion(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
 # test method 2: reconstruct each image (using individual fc and fu)
 class Rec(Base_Reconstruct):
@@ -94,8 +94,8 @@ class Rec(Base_Reconstruct):
         self.pixel_preds.append(t2np(final_map))
         self.pixel_labels.extend(t2np(gt))
 
-        # if item % 5 == 0:
-        # display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
+        if item % 2 == 0:
+            display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
 # test method 3: not use
 class Recursive_Rec(Base_Reconstruct):
@@ -199,4 +199,27 @@ class RGB_Nmap_Rec(Base_Reconstruct):
         if item % 5 == 0:
             display_image(t2np(lightings), t2np(rgb_out), self.reconstruct_path, item)
 
-  
+class Nmap_Repair(Base_Reconstruct):
+    def __init__(self, args, cls_path):
+        super().__init__(args, cls_path)
+        
+    def predict(self, item, lightings, nmap, gt, label):
+        nmap = nmap.to(self.device)
+        feat = self.nmap_model.encode(nmap)
+        rep_feat = self.nmap_model.Repair_Feat(feat)
+        
+        score_map = torch.sum(torch.abs(feat - rep_feat), dim=1)
+        score_map = score_map.unsqueeze(0)
+        score_map = torch.nn.functional.interpolate(score_map, size=(self.image_size, self.image_size), mode='bilinear', align_corners = False)
+        topk_score = torch.max(score_map.flatten())
+
+        rec = self.nmap_model.decode(rep_feat)
+        loss = self.criteria(feat, rep_feat)
+        self.cls_rec_loss += loss.item()
+        self.image_labels.append(label)
+        self.image_preds.append(t2np(topk_score))
+        self.image_list.append(t2np(nmap.squeeze()))
+        self.pixel_preds.append(t2np(score_map.squeeze()))
+        self.pixel_labels.extend(t2np(gt))
+        if item % 5 == 0:
+            display_one_img(t2np(nmap.squeeze()), t2np(rec.squeeze()), self.reconstruct_path, item)

@@ -60,14 +60,14 @@ def eyecandies_classes():
     return [
         'CandyCane',
         'ChocolateCookie',
-        'ChocolatePraline',
-        'Confetto',
+        # 'ChocolatePraline',
+        # 'Confetto',
         'GummyBear',
-        'HazelnutTruffle',
+        # 'HazelnutTruffle',
         'LicoriceSandwich',
-        'Lollipop',
-        'Marshmallow',
-        'PeppermintCandy',   
+        # 'Lollipop',
+        # 'Marshmallow',
+        # 'PeppermintCandy',   
     ]
 
 def mvtec3d_classes():

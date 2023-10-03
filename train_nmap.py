@@ -4,11 +4,11 @@ import os
 import os.path as osp
 from tqdm import tqdm
 from core.data import train_nmap_loader, val_nmap_loader
-from core.models.nmap_network import NMap_AE
+from core.models.nmap_network import NMap_AE, NMap_Repair_Feat_AE
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="./checkpoints/Nmap_maskedAE_addBoth")
+parser.add_argument('--ckpt_path', default="./checkpoints/Nmap_maskedAE_addBoth_V6_masked775533Enc_ConvDec")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
@@ -120,7 +120,102 @@ class Train_Nmap():
         self.train_log_file.close()
         self.val_log_file.close()
     
+class Train_Nmap_Repair_feat():
+    def __init__(self, args):
+        self.train_log_file = open(osp.join(args.ckpt_path, "training_log.txt"), "a", 1)
+        self.val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
+        self.best_val_loss = float('inf')
+        self.epochs = args.epochs
+        self.epoch = 0
+        self.image_size = args.image_size
+        self.total_loss = 0.0
+        self.val_every = 5  # every 5 epoch to check validation
 
+        self.model = NMap_Repair_Feat_AE(device)
+        self.model.to(device)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
+        self.criterion = torch.nn.MSELoss().to(device)
+        if args.load_ckpt is not None:
+            self.load_ckpt()
+    
+    def save_ckpt(self, curr_loss, filename):
+        state_dict = {
+            'model': self.model.state_dict(),
+            'current_iteration': self.epoch,
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'epoch_loss': curr_loss,
+        }
+        torch.save(state_dict, os.path.join(args.ckpt_path, filename))
+
+    def load_ckpt(self):
+        checkpoint = torch.load(args.load_ckpt)
+        self.model.load_state_dict(checkpoint['model'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.epoch = checkpoint['current_iteration']
+    
+    def training(self):
+        for self.epoch in range(self.epochs):
+            epoch_loss = 0.0
+            epoch_rec_loss = 0.0
+            epoch_feat_loss = 0.0
+            for nmap in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+                self.optimizer.zero_grad()
+
+                nmap = nmap.to(device)
+                out, feat_loss = self.model(nmap)
+                rec_loss = self.criterion(nmap, out)
+                loss = rec_loss + feat_loss 
+                loss.backward()
+                # print("feat:", feat_loss)
+                # print("rec:", rec_loss)
+                self.optimizer.step()
+                
+                epoch_loss += loss.item()
+                epoch_rec_loss += rec_loss.item() 
+                epoch_feat_loss += feat_loss.item()
+            
+                
+            epoch_loss /= len(data_loader)
+            epoch_rec_loss /= len(data_loader)
+            epoch_feat_loss /= len(data_loader)
+            self.total_loss += epoch_loss
+            
+            print('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, Feat Loss: {:.6f}'.format(self.epoch, epoch_loss, epoch_rec_loss, epoch_feat_loss))
+
+            if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
+                self.model.eval()
+                epoch_val_loss = 0.0
+                epoch_val_rec_loss = 0.0
+                epoch_val_feat_loss = 0.0
+                with torch.no_grad():
+                    for nmap in val_loader:
+                        nmap = nmap.to(device)
+                        out, feat_loss = self.model(nmap)
+                        rec_loss = self.criterion(nmap, out)
+                        loss = rec_loss + feat_loss
+                        
+                        epoch_val_loss += loss.item()
+                        epoch_val_rec_loss += rec_loss.item() 
+                        epoch_val_feat_loss += feat_loss.item()
+
+                epoch_val_rec_loss /= len(val_loader)
+                epoch_val_feat_loss /= len(val_loader)
+                epoch_val_loss /= len(val_loader)
+
+                if epoch_val_loss < self.best_val_loss:
+                    self.best_val_loss = epoch_val_loss
+                    self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
+                    print("Save the best checkpoint")
+                
+                print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Validation Loss: {epoch_val_loss:.6f}, Rec Loss: {epoch_val_rec_loss:.6f}, Feat Loss: {epoch_val_feat_loss:.6f}")
+                self.val_log_file.write('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, Feat Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss, epoch_val_rec_loss, epoch_val_feat_loss))
+
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Rec Loss: {:.6f}, Feat Loss: {:.6f}\n'.format(self.epoch, epoch_loss, epoch_rec_loss, epoch_feat_loss))
+
+        self.save_ckpt(epoch_loss, "last_ckpt.pth")
+        self.train_log_file.close()
+        self.val_log_file.close()
+    
 
 if __name__ == '__main__':
     runner = Train_Nmap(args)

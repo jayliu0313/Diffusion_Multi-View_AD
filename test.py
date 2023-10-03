@@ -10,10 +10,10 @@ import pandas as pd
 
 parser = argparse.ArgumentParser(description='test')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--method_name', default="mean_rec", help="rgb_nmap_rec, mean_rec, rec, recur_rec, nmap_rec, memory")
-parser.add_argument('--score_type', default=1, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
-parser.add_argument('--rgb_ckpt_path', default="checkpoints/RandomfuseFc_crossAttenFu_Liu_datanoise_alldata/best_ckpt.pth")
-parser.add_argument('--nmap_ckpt_path', default="checkpoints/Nmap_maskedAE_addNoiseInput/best_ckpt.pth")
+parser.add_argument('--method_name', default="mean_rec", help="rgb_nmap_rec, mean_rec, rec, nmap_repair, nmap_rec, memory")
+parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
+parser.add_argument('--rgb_ckpt_path', default="rgb_checkpoints/pureConv_Recloss_RandBothRecloss_addinputNoise_V1/best_ckpt.pth")
+parser.add_argument('--nmap_ckpt_path', default="checkpoints/Nmap_maskedAE_addBoth_V6_masked775533Enc_ConvDec/best_ckpt.pth")
 
 parser.add_argument('--output_dir', default="./output")
 parser.add_argument('--dataset_type', default="eyecandies")
@@ -38,14 +38,14 @@ def run_eyecandies(args):
         classes = [
         'CandyCane',
         'ChocolateCookie',
-        'ChocolatePraline',
-        'Confetto',
+        # 'ChocolatePraline',
+        # 'Confetto',
         'GummyBear',
-        'HazelnutTruffle',
+        # 'HazelnutTruffle',
         'LicoriceSandwich',
-        'Lollipop',
-        'Marshmallow',
-        'PeppermintCandy'
+        # 'Lollipop',
+        # 'Marshmallow',
+        # 'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = []

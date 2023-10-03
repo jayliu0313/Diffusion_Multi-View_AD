@@ -7,7 +7,7 @@ from utils.au_pro_util import calculate_au_pro
 from utils.visualize_util import *
 from sklearn.metrics import roc_auc_score
 from core.models.rgb_network import *
-from core.models.nmap_network import NMap_AE
+from core.models.nmap_network import NMap_AE, NMap_Repair_Feat_AE
 
 class Base_Method():
     def __init__(self, args, cls_path):
@@ -43,7 +43,7 @@ class Base_Method():
             self.nmap_model.freeze_model()
         if rgb_ckpt_path != None:
             print("Load the checkpoint of rgb model...")
-            self.rgb_model = Masked_ConvAE(self.device)
+            self.rgb_model = Conv_AE(self.device)
             self.rgb_model.to(self.device)
             self.rgb_model.eval()
             checkpoint = torch.load(rgb_ckpt_path, map_location=self.device)

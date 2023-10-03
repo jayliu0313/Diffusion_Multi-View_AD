@@ -5,20 +5,22 @@ import os.path as osp
 import torch.nn.functional as F
 from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
-from core.models.contrastive import Contrastive
-from core.models.rgb_network import Masked_ConvAE
+# from core.models.contrastive import Contrastive
+from core.models.rgb_network import Conv_AE #,Masked_ConvAE
+import kornia
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="RandomfuseFc_AttenFu_LiuV2_bothnoise_alldata")
+parser.add_argument('--ckpt_path', default="rgb_checkpoints/pureConv_Recloss_RandBothRecloss_addinputNoise_V1")
 parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument('--image_size', default=224, type=int)
 
 # Training Setup
+parser.add_argument("--rand_weight", default=0.3, type=float)
 parser.add_argument("--training_mode", default="fuse_fc", help="traing type: mean, fuse_fc, fuse_both, random_both")
 parser.add_argument("--model", default="Masked_Conv", help="traing type: Conv, Conv_Ins, Masked_Conv")
 parser.add_argument("--load_ckpt", default=None)
-parser.add_argument("--learning_rate", default=0.0003)
+parser.add_argument("--learning_rate", default=0.0001)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=6)
 parser.add_argument("--epochs", default=1000)
@@ -56,12 +58,13 @@ class Train_Conv_Base():
         self.total_loss = 0.0
         self.val_every = 5  # every 5 epoch to check validation
         self.batch_size = args.batch_size
-
-        self.model = Masked_ConvAE(device)
+        # self.model = Masked_ConvAE(device)
+        self.model = Conv_AE(device)
         self.model.to(device)
         self.model.train()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)
         self.criterion = torch.nn.MSELoss().to(device)
+        self.ssim_loss = kornia.losses.SSIMLoss(11, reduction='mean')
         if args.load_ckpt is not None:
             self.load_ckpt()
     
@@ -87,55 +90,45 @@ class Train_Conv_Base():
 class Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-        
+        self.loss_feature = torch.nn.MSELoss()
+     
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
-            epoch_rec_loss = 0.0
-            epoch_fc_loss = 0.0
-            for lightings, noise_imgs, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+            for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
-                lightings = lightings.reshape(-1, 3, 224, 224).to(device)
-                noise_imgs = gauss_noise_tensor(lightings)
-                fc = self.model.encode(noise_imgs)
+                lightings = lightings.to(device)
+                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
 
-                fc = fc.reshape(-1, 6, 256, 28, 28)
-                mean_fc = torch.mean(fc, dim = 1)
-                cross_fc = self.crossattention(fc, mean_fc)
-                cross_fc = cross_fc.reshape(-1, 256, 28, 28)
-                out = self.model.decode(cross_fc)
-
-                loss = self.criterion(lightings, out)
-                # print(loss)
+                out = self.model(lightings)
+                rec_loss = self.criterion(lightings, out)            
+                loss = rec_loss
                 loss.backward()
               
                 self.optimizer.step()
                 epoch_loss += loss.item()
-                
-            epoch_loss /= len(data_loader)
         
+
+            epoch_loss /= len(data_loader)
             
             print('Epoch {}: Loss: {:.6f}'.format(self.epoch, epoch_loss))
 
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
                 epoch_val_loss = 0.0
-                epoch_val_rec_loss = 0.0
-                epoch_val_fc_loss = 0.0
                 with torch.no_grad():
-                    for lightings, noise_imgs, _ in val_loader:
-                        lightings = lightings.reshape(-1, 3, 224, 224).to(device)
-                        noise_imgs = gauss_noise_tensor(lightings)
-                        fc = self.model.encode(noise_imgs)
-                        fc = fc.reshape(-1, 6, 256, 28, 28)
-                        mean_fc = torch.mean(fc, dim = 1)
-                        cross_fc = self.crossattention(fc, mean_fc)
-                        cross_fc = cross_fc.reshape(-1, 256, 28, 28)
-                        out = self.model.decode(cross_fc)
-                        loss = self.criterion(lightings, out)
-                        epoch_val_loss += loss.item()
+                    for lightings, _ in val_loader:
+                        lightings = lightings.to(device)
+                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
 
+                        out = self.model(lightings)
+                        rec_loss = self.criterion(lightings, out)            
+                        loss = rec_loss
+
+                        epoch_val_loss += loss.item()
+                        
                 epoch_val_loss /= len(val_loader)
+
                 print(f"Epoch [{self.epoch}/{self.epochs}] - " f"Validation Loss: {epoch_val_loss:.6f}")
                 self.val_log_file.write('Epoch {}: Loss: {:.6f}\n'.format(self.epoch, epoch_val_loss))
 
@@ -154,7 +147,7 @@ class Fuse_fc_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
         self.loss_feature = torch.nn.MSELoss()
-        
+
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
@@ -328,148 +321,178 @@ class Fuse_Both_Rec(Train_Conv_Base):
 class Random_Both_Rec(Train_Conv_Base):
     def __init__(self, args):
         super().__init__(args)
-        self.feature_loss = torch.nn.MSELoss()
+        # self.feature_loss = torch.nn.MSELoss()
         
     def training(self):
         for self.epoch in range(self.epochs):
             epoch_loss = 0.0
             epoch_loss_rec = 0.0
+            epoch_loss_ssim = 0.0
             epoch_loss_fc = 0.0
             epoch_loss_fu = 0.0
+            
             for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
                 
                 lightings = lightings.to(device)
                 lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
-                fc, fu = self.model.encode(lightings)
-                
-                _, D, W, H = fc.shape
-                # random fc by lightings
-                fc = fc.reshape(-1, 6, D, W, H)
-                mean_fc = torch.mean(fc, dim = 1)
-                mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
-                loss_fc = self.feature_loss(fc, mean_fc)
-                # loss_fc = 0.0
-                # for i in range(6):
-                #     for j in range(6):
-                #         if i != j:
-                #             loss_fc += self.criterion(fc[:, i, :, :, :], fc[:, j, :, :, :])        
-                # loss_fc /= (36-6)
-               
-                random_indices = torch.randperm(6)
-                fc = fc[:, random_indices, :, :]
-                fc = fc.reshape(-1, D, W, H)
-
-                # random fu by batch 
-                fu = fu.reshape(-1, 6, D, W, H)
-                # mean_fu = torch.mean(fu, dim = 0)
-                # mean_fu = mean_fu.unsqueeze(0).repeat(fu.shape[0], 1, 1, 1, 1)
-                # loss_fu = self.feature_loss(fu, mean_fu)
-                # loss_fu = 0.0
-                # for i in range(fu.shape[0]):
-                #     for j in range(fu.shape[0]):
-                #         if i != j:
-                #             loss_fu += self.criterion(fu[i, :, :, :, :], fu[j, :, :, :, :])
-                # loss_fu /= (fu.shape[0] * fu.shape[0] - fu.shape[0])
-                random_indices = torch.randperm(fu.shape[0])
-                fu = fu[random_indices]
-                fu = fu.reshape(-1, D, W, H)
-                
-                out = self.model.decode(fc, fu)
+                out, loss_fc, loss_fu = self.model.rand_rec(lightings)
                 loss_rec = self.criterion(lightings, out)
+                loss_ssim = self.ssim_loss(lightings, out)
                 # print("fc", loss_fc)
                 # print("fu", loss_fu)
                 # print("rec", loss_rec)
-                loss =  loss_rec + loss_fc
+                # print("ssim", loss_ssim)
+                loss =  loss_rec + loss_fc * 0.1 + loss_fu * 0.1
 
                 loss.backward()
               
                 self.optimizer.step()
                 epoch_loss_rec += loss_rec.item()
+                epoch_loss_ssim += loss_ssim.item()
                 epoch_loss_fc += loss_fc.item()
-                # epoch_loss_fu += loss_fu.item()
+                epoch_loss_fu += loss_fu.item()
                 epoch_loss += loss.item()
             epoch_loss_rec /= len(data_loader)    
             epoch_loss_fc /= len(data_loader)  
             epoch_loss_fu /= len(data_loader)  
             epoch_loss /= len(data_loader)
-            
-            print('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_fc, epoch_loss_fu))
+            epoch_loss_ssim /= len(data_loader)
+            print('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss SSIM: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_ssim, epoch_loss_fc, epoch_loss_fu))
 
             if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
                 self.model.eval()
                 epoch_val_loss = 0.0
                 epoch_val_loss_rec = 0.0
+                epoch_val_loss_ssim = 0.0
                 epoch_val_loss_fc = 0.0
                 epoch_val_loss_fu = 0.0
                 with torch.no_grad():
                     for lightings, _ in val_loader:
                         lightings = lightings.to(device)
                         lightings = lightings.reshape(-1, 3, args.image_size, args.image_size) 
-                        fc, fu = self.model.encode(lightings)
+                        out, loss_fc, loss_fu = self.model(lightings)
                         
-                        _, D, W, H = fc.shape
-                        # random fc by lightings
-                        fc = fc.reshape(-1, 6, D, W, H)
-                        mean_fc = torch.mean(fc, dim = 1)
-                        mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
-                        loss_fc = self.feature_loss(fc, mean_fc)
-                        # loss_fc = 0.0
-                        # for i in range(6):
-                        #     for j in range(6):
-                        #         if i != j:
-                        #             loss_fc += self.criterion(fc[:, i, :, :, :], fc[:, j, :, :, :])
-                        # loss_fc /= (36-6)
-
-                        random_indices = torch.randperm(6)
-                        fc = fc[:, random_indices, :, :]
-                        fc = fc.reshape(-1, D, W, H)
-
-                        # random fu by batch 
-                        fu = fu.reshape(-1, 6, D, W, H)
-                        # mean_fu = torch.mean(fu, dim = 0)
-                        # mean_fu = mean_fu.unsqueeze(0).repeat(fu.shape[0], 1, 1, 1, 1)
-                        # loss_fu = self.feature_loss(fu, mean_fu)
-                        # loss_fu = 0.0
-                        # for i in range(fu.shape[0]):
-                        #     for j in range(fu.shape[0]):
-                        #         if i != j:
-                        #             loss_fu += self.criterion(fu[i, :, :, :, :], fu[j, :, :, :, :])
-                        # loss_fu /= (fu.shape[0] * fu.shape[0] - fu.shape[0])
-                        random_indices = torch.randperm(fu.shape[0])
-                        fu = fu[random_indices]
-                        fu = fu.reshape(-1, D, W, H)
-                        
-                        out = self.model.decode(fc, fu)
                         loss_rec = self.criterion(lightings, out)
-                        loss = loss_rec + loss_fc
+                        loss_ssim = self.ssim_loss(lightings, out)
+                        loss = loss_rec #+ loss_fc + loss_fu
                         epoch_val_loss_rec += loss_rec.item()
+                        epoch_val_loss_ssim += loss_ssim.item()
                         epoch_val_loss_fc += loss_fc.item()
-                        # epoch_val_loss_fu += loss_fu.item()
+                        epoch_val_loss_fu += loss_fu.item()
                         epoch_val_loss += loss.item()
 
-                epoch_val_loss_rec /= len(val_loader)    
+                epoch_val_loss_rec /= len(val_loader)
+                epoch_val_loss_ssim /= len(val_loader)    
                 epoch_val_loss_fc /= len(val_loader)  
                 epoch_val_loss_fu /= len(val_loader)  
                 epoch_val_loss /= len(val_loader)
 
-                print('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_fc, epoch_val_loss_fu))
-                self.val_log_file.write('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_fc, epoch_val_loss_fu))
+                print('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss SSIM: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_ssim, epoch_val_loss_fc, epoch_val_loss_fu))
+                self.val_log_file.write('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss SSIM: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}\n'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_ssim, epoch_val_loss_fc, epoch_val_loss_fu))
 
                 if epoch_val_loss < self.best_val_loss:
                     self.best_val_loss = epoch_val_loss
                     self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
                     print("Save the best checkpoint")
 
-            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_fc, epoch_loss_fu))
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss SSIM: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}\n'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_ssim, epoch_loss_fc, epoch_loss_fu))
 
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
         self.train_log_file.close()
         self.val_log_file.close()
- 
+
+class Rec_Random_Both_Rec(Train_Conv_Base):
+    def __init__(self, args):
+        super().__init__(args)
+        # self.feature_loss = torch.nn.MSELoss()
+        self.rand_weight = args.rand_weight
+    def training(self):
+        for self.epoch in range(self.epochs):
+            epoch_loss = 0.0
+            epoch_loss_rec = 0.0
+            epoch_loss_rand_rec = 0.0
+            epoch_loss_fc = 0.0
+            epoch_loss_fu = 0.0
+            
+            for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+                self.optimizer.zero_grad()
+                
+                lightings = lightings.to(device)
+                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
+                rec, rand_rec, loss_fc, loss_fu = self.model.rec_rand_rec(lightings)
+                
+                loss_rec = self.criterion(lightings, rec)
+                loss_rand_rec = self.criterion(lightings, rand_rec)
+                # loss_ssim = self.ssim_loss(lightings, out)
+                # print("fc", loss_fc)
+                # print("fu", loss_fu)
+                # print("rec", loss_rec)
+                # print("ssim", loss_ssim)
+                
+                loss = (1-self.rand_weight) * loss_rec + self.rand_weight * loss_rand_rec +  loss_fc * 0.1 + loss_fu * 0.1
+
+                loss.backward()
+              
+                self.optimizer.step()
+                epoch_loss_rec += loss_rec.item()
+                epoch_loss_rand_rec += loss_rand_rec.item()
+                epoch_loss_fc += loss_fc.item()
+                epoch_loss_fu += loss_fu.item()
+                epoch_loss += loss.item()
+            epoch_loss_rec /= len(data_loader)    
+            epoch_loss_fc /= len(data_loader)  
+            epoch_loss_fu /= len(data_loader)  
+            epoch_loss /= len(data_loader)
+            epoch_loss_rand_rec /= len(data_loader)
+            print('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss Rand Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_rand_rec, epoch_loss_fc, epoch_loss_fu))
+
+            if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
+                self.model.eval()
+                epoch_val_loss = 0.0
+                epoch_val_loss_rec = 0.0
+                epoch_val_loss_rand_rec = 0.0
+                epoch_val_loss_fc = 0.0
+                epoch_val_loss_fu = 0.0
+                with torch.no_grad():
+                    for lightings, _ in val_loader:
+                        lightings = lightings.to(device)
+                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
+                        rec, rand_rec, loss_fc, loss_fu = self.model.rec_rand_rec(lightings)
+                        loss_rec = self.criterion(lightings, rec)
+                        loss_rand_rec = self.criterion(lightings, rand_rec)
+                        # loss_ssim = self.ssim_loss(lightings, out)
+               
+                        loss = (1-self.rand_weight) * loss_rec + self.rand_weight * loss_rand_rec +  loss_fc * 0.01 + loss_fu * 0.01
+                        epoch_val_loss_rec += loss_rec.item()
+                        epoch_val_loss_rand_rec += loss_rand_rec.item()
+                        epoch_val_loss_fc += loss_fc.item()
+                        epoch_val_loss_fu += loss_fu.item()
+                        epoch_val_loss += loss.item()
+
+                epoch_val_loss_rec /= len(val_loader)
+                epoch_val_loss_rand_rec /= len(val_loader)    
+                epoch_val_loss_fc /= len(val_loader)  
+                epoch_val_loss_fu /= len(val_loader)  
+                epoch_val_loss /= len(val_loader)
+
+                print('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss Rand Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_rand_rec, epoch_val_loss_fc, epoch_val_loss_fu))
+                self.val_log_file.write('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss Rand Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}\n'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_rand_rec, epoch_val_loss_fc, epoch_val_loss_fu))
+
+                if epoch_val_loss < self.best_val_loss:
+                    self.best_val_loss = epoch_val_loss
+                    self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
+                    print("Save the best checkpoint")
+
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss Rand Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}\n'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_rand_rec, epoch_loss_fc, epoch_loss_fu))
+
+        self.save_ckpt(epoch_loss, "last_ckpt.pth")
+        self.train_log_file.close()
+        self.val_log_file.close()
+  
 
 if __name__ == '__main__':
-    runner = Fuse_fc_Rec(args)
+    runner = Rec_Random_Both_Rec(args)
     # if args.training_mode == "mean":
     #     runner = Mean_Rec(args)
     # elif args.training_mode == "fuse_fc":
