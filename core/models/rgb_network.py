@@ -180,7 +180,7 @@ class Conv_AE(nn.Module):
         fc = self.common_MLP(x)
         fu = self.unique_MLP(x)
         x = self.fuse_both(fu)
-        out = self.decode(fc)
+        out = self.decode(x)
         return out
 
     def mean_rec(self, x):
@@ -198,6 +198,17 @@ class Conv_AE(nn.Module):
         x = self.fuse_both(mean_fc + fu)
         out = self.decode(x)
         return out
+    
+    def get_fc(self, x):
+        x = self.encode(x)
+        fc = self.common_MLP(x)
+        return fc
+    
+    def get_meanfc(self, x):
+        x = self.encode(x)
+        fc = self.common_MLP(x)
+        mean_fc = torch.mean(fc, dim = 0)
+        return mean_fc
     
     def freeze_model(self):
         for param in self.parameters():

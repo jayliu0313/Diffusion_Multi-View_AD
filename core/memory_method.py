@@ -1,5 +1,5 @@
 import torch
-import tqdm
+from tqdm import tqdm
 from core.base import Base_Method
 from utils.utils import t2np
 from sklearn import random_projection
@@ -9,21 +9,44 @@ class Memory_Method(Base_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
         self.f_coreset = 1
+        self.coreset_eps = 0.9
+        self.n_reweight = 3
+        self.blur = KNNGaussianBlur(4)
         
-
     def compute_s_s_map(self, patch, feature_map_dims):
+        patch = (patch - self.mean)/self.std
+        # self.patch_lib = self.rgb_layernorm(self.patch_lib)
         dist = torch.cdist(patch, self.patch_lib.to(self.device))
-        dist = dist.to('cpu')
+
         min_val, min_idx = torch.min(dist, dim=1)
+
+        # print(min_val.shape)
+        s_idx = torch.argmax(min_val)
         s_star = torch.max(min_val)
+
+        # reweighting
+        m_test = patch[s_idx].unsqueeze(0)  # anomalous patch
+        m_star = self.patch_lib[min_idx[s_idx]].unsqueeze(0)  # closest neighbour
+        w_dist = torch.cdist(m_star, self.patch_lib)  # find knn to m_star pt.1
+        _, nn_idx = torch.topk(w_dist, k=self.n_reweight, largest=False)  # pt.2
+
+        m_star_knn = torch.linalg.norm(m_test - self.patch_lib[nn_idx[0, 1:]].to(self.device), dim=1)
+        D = torch.sqrt(torch.tensor(patch.shape[1]))
+        w = 1 - (torch.exp(s_star / D) / (torch.sum(torch.exp(m_star_knn / D)) + 1e-5))
+        s = w * s_star
+
         # segmentation map
         s_map = min_val.view(1, 1, *feature_map_dims)
-        s_map = torch.nn.functional.interpolate(s_map, size=(self.image_size, self.image_size), mode='bilinear')
-        s_map = self.blur(s_map)
-        return s_star, s_map
+        s_map = torch.nn.functional.interpolate(s_map, size=(224, 224), mode='bilinear')
+        s_map = self.blur(s_map.to('cpu'))
+        return s.to('cpu'), s_map
 
     def run_coreset(self):
         self.patch_lib = torch.cat(self.patch_lib, 0)
+        self.mean = torch.mean(self.patch_lib)
+        self.std = torch.std(self.patch_lib)
+        self.patch_lib = (self.patch_lib - self.mean)/self.std
+
         if self.f_coreset < 1:
             self.coreset_idx = self.get_coreset_idx_randomp(self.patch_lib,
                                                             n=int(self.f_coreset * self.patch_lib.shape[0]),
@@ -83,26 +106,23 @@ class Memory_Method(Base_Method):
     def add_sample_to_mem_bank(self, lightings):
         lightings = lightings.to(self.device)
         lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
-        six_fc = self.model.get_fc(lightings)
-        rgb_feature_maps = self.model.get_mean_fc(six_fc)
-        rgb_patch = self.average(rgb_feature_maps)
-
-        rgb_patch_size28 = rgb_patch.reshape(rgb_patch.shape[1], -1).T
-
+        rgb_feature_maps = self.rgb_model.get_meanfc(lightings)
+        # rgb_feature_maps = self.average(rgb_feature_maps)
+        rgb_patch_size28 = rgb_feature_maps.reshape(rgb_feature_maps.shape[0], -1).T
+        # print(rgb_patch_size28.shape)
         self.patch_lib.append(rgb_patch_size28.to('cpu'))
     
-    def predict(self, item, lightings, gt, label):
+    def predict(self, i, lightings, nmap, gt, label):
         img = lightings[:, 5, :, :, :].squeeze(0)
         lightings = lightings.to(self.device)
         lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
-        six_fc = self.model.get_fc(lightings)
-        rgb_feature_maps = self.model.get_mean_fc(six_fc)
-        rgb_patch = self.average(rgb_feature_maps)
-        rgb_patch = rgb_patch.reshape(rgb_patch.shape[1], -1).T
-        
+        rgb_feature_maps = self.rgb_model.get_meanfc(lightings)
+        # rgb_feature_maps = self.average(rgb_feature_maps)
+        rgb_patch = rgb_feature_maps.reshape(rgb_feature_maps.shape[0], -1).T
+        # print(rgb_patch.shape)
         s, smap = self.compute_s_s_map(rgb_patch, rgb_feature_maps[0].shape[-2:])
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
         self.image_list.append(t2np(img))
         self.pixel_preds.append(t2np(smap))
-        self.pixel_labels.extend(t2np(gt))
+        self.pixel_labels.extend(t2np(gt)) 

@@ -1,5 +1,4 @@
 checkpoints/*
-rgb_checkpoints/*
 **/__pycache__
 core/models/__pycache__/*
 utils/__pycache__/*

@@ -23,5 +23,5 @@ class KNNGaussianBlur(torch.nn.Module):
 
     def __call__(self, img):
         map_max = img.max()
-        final_map = self.load((img[0] / map_max).filter(self.blur_kernel)) * map_max
+        final_map = self.load(self.unload(img[0] / map_max).filter(self.blur_kernel)) * map_max
         return final_map

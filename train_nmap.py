@@ -5,6 +5,7 @@ import os.path as osp
 from tqdm import tqdm
 from core.data import train_nmap_loader, val_nmap_loader
 from core.models.nmap_network import NMap_AE, NMap_Repair_Feat_AE
+from core.models.backnone import RGB_Model
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
@@ -120,7 +121,7 @@ class Train_Nmap():
         self.train_log_file.close()
         self.val_log_file.close()
     
-class Train_Nmap_Repair_feat():
+class Train_Nmap_EfficientAE():
     def __init__(self, args):
         self.train_log_file = open(osp.join(args.ckpt_path, "training_log.txt"), "a", 1)
         self.val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
@@ -130,7 +131,7 @@ class Train_Nmap_Repair_feat():
         self.image_size = args.image_size
         self.total_loss = 0.0
         self.val_every = 5  # every 5 epoch to check validation
-
+        self.rgb_model = RGB_Model(device)
         self.model = NMap_Repair_Feat_AE(device)
         self.model.to(device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.learning_rate)

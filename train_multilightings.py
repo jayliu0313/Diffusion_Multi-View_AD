@@ -489,7 +489,94 @@ class Rec_Random_Both_Rec(Train_Conv_Base):
         self.save_ckpt(epoch_loss, "last_ckpt.pth")
         self.train_log_file.close()
         self.val_log_file.close()
-  
+
+class Rec_Random_Both_Rec_v2(Train_Conv_Base):
+    def __init__(self, args):
+        super().__init__(args)
+        # self.feature_loss = torch.nn.MSELoss()
+        self.rand_weight = args.rand_weight
+    def training(self):
+        for self.epoch in range(self.epochs):
+            epoch_loss = 0.0
+            epoch_loss_rec = 0.0
+            epoch_loss_rand_rec = 0.0
+            epoch_loss_fc = 0.0
+            epoch_loss_fu = 0.0
+            
+            for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
+                self.optimizer.zero_grad()
+                
+                lightings = lightings.to(device)
+                lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
+                rec, rand_rec, loss_fc, loss_fu = self.model.rec_rand_rec(lightings)
+                
+                loss_rec = self.criterion(lightings, rec)
+                loss_rand_rec = self.criterion(lightings, rand_rec)
+                # loss_ssim = self.ssim_loss(lightings, out)
+                # print("fc", loss_fc)
+                # print("fu", loss_fu)
+                # print("rec", loss_rec)
+                # print("ssim", loss_ssim)
+                
+                loss = (1-self.rand_weight) * loss_rec + self.rand_weight * loss_rand_rec +  loss_fc * 0.1 + loss_fu * 0.1
+
+                loss.backward()
+              
+                self.optimizer.step()
+                epoch_loss_rec += loss_rec.item()
+                epoch_loss_rand_rec += loss_rand_rec.item()
+                epoch_loss_fc += loss_fc.item()
+                epoch_loss_fu += loss_fu.item()
+                epoch_loss += loss.item()
+            epoch_loss_rec /= len(data_loader)    
+            epoch_loss_fc /= len(data_loader)  
+            epoch_loss_fu /= len(data_loader)  
+            epoch_loss /= len(data_loader)
+            epoch_loss_rand_rec /= len(data_loader)
+            print('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss Rand Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_rand_rec, epoch_loss_fc, epoch_loss_fu))
+
+            if self.epoch % self.val_every == 0 or self.epoch == self.epochs - 1:
+                self.model.eval()
+                epoch_val_loss = 0.0
+                epoch_val_loss_rec = 0.0
+                epoch_val_loss_rand_rec = 0.0
+                epoch_val_loss_fc = 0.0
+                epoch_val_loss_fu = 0.0
+                with torch.no_grad():
+                    for lightings, _ in val_loader:
+                        lightings = lightings.to(device)
+                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
+                        rec, rand_rec, loss_fc, loss_fu = self.model.rec_rand_rec(lightings)
+                        loss_rec = self.criterion(lightings, rec)
+                        loss_rand_rec = self.criterion(lightings, rand_rec)
+                        # loss_ssim = self.ssim_loss(lightings, out)
+               
+                        loss = (1-self.rand_weight) * loss_rec + self.rand_weight * loss_rand_rec +  loss_fc * 0.01 + loss_fu * 0.01
+                        epoch_val_loss_rec += loss_rec.item()
+                        epoch_val_loss_rand_rec += loss_rand_rec.item()
+                        epoch_val_loss_fc += loss_fc.item()
+                        epoch_val_loss_fu += loss_fu.item()
+                        epoch_val_loss += loss.item()
+
+                epoch_val_loss_rec /= len(val_loader)
+                epoch_val_loss_rand_rec /= len(val_loader)    
+                epoch_val_loss_fc /= len(val_loader)  
+                epoch_val_loss_fu /= len(val_loader)  
+                epoch_val_loss /= len(val_loader)
+
+                print('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss Rand Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_rand_rec, epoch_val_loss_fc, epoch_val_loss_fu))
+                self.val_log_file.write('Validation - Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss Rand Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}\n'.format(self.epoch, epoch_val_loss, epoch_val_loss_rec, epoch_val_loss_rand_rec, epoch_val_loss_fc, epoch_val_loss_fu))
+
+                if epoch_val_loss < self.best_val_loss:
+                    self.best_val_loss = epoch_val_loss
+                    self.save_ckpt(self.best_val_loss, "best_ckpt.pth")
+                    print("Save the best checkpoint")
+
+            self.train_log_file.write('Epoch {}: Loss: {:.6f}, Loss Rec: {:.6f}, Loss Rand Rec: {:.6f}, Loss fc: {:.6f}, Loss fu: {:.6f}\n'.format(self.epoch, epoch_loss, epoch_loss_rec, epoch_loss_rand_rec, epoch_loss_fc, epoch_loss_fu))
+
+        self.save_ckpt(epoch_loss, "last_ckpt.pth")
+        self.train_log_file.close()
+        self.val_log_file.close()
 
 if __name__ == '__main__':
     runner = Rec_Random_Both_Rec(args)
