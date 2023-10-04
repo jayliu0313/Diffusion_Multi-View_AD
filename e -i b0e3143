@@ -1,0 +1,55 @@
+[33mfd2251e[m[33m ([m[1;36mHEAD -> [m[1;32mmain[m[33m)[m newone
+[33mf4a56ac[m diffusion training
+[33md8dfe70[m new diffusion training
+[33m9dfbed2[m new train diffusion
+[33m545e6ac[m new train_diffusion_model
+[33m9c97dc6[m new training
+[33md3cdfd9[m train
+[33mb0e3143[m training type
+[33me436018[m[33m ([m[1;31morigin/main[m[33m)[m new
+[33m0009478[m no_ckpt
+[33mc3e3001[m new
+[33m7af75ea[m new
+[33mf8fc19d[m new
+[33mbf72fea[m new
+[33md904718[m RGB Normal Reconstruct
+[33m8e6f35a[m new score compute
+[33m22ebe1f[m new compute score
+[33m35b1552[m new compute maxscore
+[33m71a80ed[m addjitter
+[33meed154b[m MaskedConv
+[33m550da2e[m gaussian_SCALE06
+[33ma5bd9f4[m add guassian noise
+[33m3d4c70e[m Add Input Noise
+[33m501f42f[m noise input for training
+[33m0d6630a[m noisedinput_training
+[33mb7cbb71[m masked_conv
+[33m7773f55[m feature mse
+[33m0b4560d[m add fc loss and fu loss
+[33m8659bd7[m 230831
+[33mc7cd5ce[m new_random_fuse
+[33m39545a0[m fuse_both
+[33m580e850[m memory_method
+[33md5f5039[m 230823
+[33md00b4b7[m fuse_both
+[33m69ff4f9[m remove pycache
+[33m2e158b8[m 230819
+[33mf429d56[m 230819
+[33m0fdad39[m 230819
+[33mda55bd6[m fuse_feature
+[33mff6a030[m nmap_testing
+[33m4fa1cda[m normal_training
+[33m79f81b9[m new_fuse_ckpt
+[33mee22fcb[m fusion_ckpt_update
+[33m5cf29d0[m test_fusebest_ckpt
+[33m39c38fd[m 20230813_0454
+[33m653f594[m 20230812_1509
+[33maead46f[m train_modulization
+[33m36dd350[m val_data
+[33m10f651d[m val_data
+[33m6e8995a[m fuse_ckpt100
+[33maa962da[m README_update
+[33me942a45[m 230810_1219
+[33m6b7e83f[m FuseRec0810
+[33m26ccb6e[m first_commit
+[33me2c4046[m 20230810_0216
