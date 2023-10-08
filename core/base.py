@@ -43,7 +43,7 @@ class Base_Method():
             self.nmap_model.freeze_model()
         if rgb_ckpt_path != None:
             print("Load the checkpoint of rgb model...")
-            self.rgb_model = Conv_AE(self.device)
+            self.rgb_model = ResNetAE_Decom_Bottleneck(self.device)
             self.rgb_model.to(self.device)
             self.rgb_model.eval()
             checkpoint = torch.load(rgb_ckpt_path, map_location=self.device)

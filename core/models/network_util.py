@@ -10,7 +10,179 @@ from numpy.random import default_rng
 def INF(B,H,W):
     return -torch.diag(torch.tensor(float("inf")).cuda().repeat(H),0).unsqueeze(0).repeat(B*W,1,1)
 
+def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
+    """3x3 convolution with padding"""
+    return nn.Conv2d(
+        in_planes,
+        out_planes,
+        kernel_size=3,
+        stride=stride,
+        padding=dilation,
+        groups=groups,
+        bias=False,
+        dilation=dilation,
+    )
 
+def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
+    """1x1 convolution"""
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
+class Decom_Block(nn.Module):
+    def __init__(self, chennel, norm_layer = None):
+        super(Decom_Block, self).__init__()
+        self.fc_conv = conv3x3(chennel, chennel)
+        # self.bn = norm_layer(chennel)
+        self.relu = nn.ReLU(inplace=True)
+        self.fu_conv = conv3x3(chennel, chennel)
+        self.fuse_conv = conv3x3(chennel, chennel)
+        
+    def forward(self, x):
+        fc = self.fc_conv(x)
+        fu = self.fu_conv(x)
+        x = self.relu(self.fuse_conv(fc + fu))
+        return x
+    
+    def rand_forward(self, x):
+        fc = self.fc_conv(x)
+        fu = self.fu_conv(x)
+
+        _, C, H ,W = fc.size()
+        fc = fc.reshape(-1, 6, C, H, W)
+        random_indices = torch.randperm(6)
+        fc = fc[:, random_indices, :, :]
+        fc = fc.reshape(-1, C, H, W)
+        
+        _, C, H ,W = fu.size()
+        fu = fu.reshape(-1, 6, C, H, W)
+        B = fu.shape[0]
+        random_indices = torch.randperm(B)
+        fu = fu[random_indices, :, :, :]
+        fu = fu.reshape(-1, C, H, W)
+
+        x = self.relu(self.fuse_conv(fc+fu))
+        return x
+    
+    def get_fc(self, x):
+        fc = self.fc_conv(x)
+        return fc
+    
+    def get_meanfc(self, x):
+        _, C, H, W = x.size()
+        fc = self.fc_conv(x)
+        x = x.transpose(-1, 6, C, H, W)
+        mean_fc = torch.mean(fc, dim = 1)
+        return mean_fc
+        
+    def get_fu(self, x):
+        fu = self.fu_conv(x)
+        return fu
+    
+    def fuse_both(self, fc, fu):
+        return self.relu(self.fuse_conv(fc + fu))
+    
+class BasicBlock(nn.Module):
+    def __init__(
+        self,
+        inplanes: int,
+        planes: int,
+        stride: int = 1,
+        short_cut = None,
+        upsample = None,
+        groups: int = 1,
+        base_width: int = 64,
+        dilation: int = 1,
+        norm_layer = None,
+    ):
+        super(BasicBlock, self).__init__()
+        self.upsample = upsample
+        self.short_cut = short_cut
+        # if norm_layer is None:
+        #     norm_layer = nn.BatchNorm2d
+        if groups != 1 or base_width != 64:
+            raise ValueError("BasicBlock only supports groups=1 and base_width=64")
+        if dilation > 1:
+            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
+        # Both self.conv1 and self.downsample layers downsample the input when stride != 1
+        self.conv1 = conv3x3(inplanes, planes, stride)
+        # self.bn1 = norm_layer(planes)
+        self.relu = nn.ReLU(inplace=True)
+        self.conv2 = conv3x3(planes, planes)
+        # self.bn2 = norm_layer(planes)
+        self.stride = stride
+        
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        # out = self.bn1(out)
+        out = self.relu(out)
+        
+        if self.upsample is not None:
+            out = self.upsample(out)
+        out = self.conv2(out)
+        # out = self.bn2(out)
+
+        if self.short_cut is not None:
+            identity = self.short_cut(x)
+        
+        out += identity
+        out = self.relu(out)
+
+        return out
+
+class Conv_Basic(nn.Module):
+    def __init__(self, in_channel=3, out_channel=32, last=False):
+        super(Conv_Basic, self).__init__()
+        self.last = last
+        self.dconv_down1 = double_conv(in_channel, out_channel)
+        self.maxpool = nn.MaxPool2d(2)
+        self.fc_conv = nn.Sequential(
+            nn.Conv2d(out_channel, out_channel, 3, padding=1),
+        )
+        self.fu_conv = nn.Sequential(
+            nn.Conv2d(out_channel, out_channel, 3, padding=1),
+        )
+        self.fuse_both = nn.Sequential(
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channel, out_channel // 2, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channel // 2, out_channel, 3, padding=1),
+            nn.ReLU(inplace=True),
+        ) 
+        
+    def forward(self, x):
+        x = self.dconv_down1(x)
+        fc = self.fc_conv(x)
+        fu = self.fu_conv(x)
+        x = self.fuse_both(fc+fu)
+        if self.last != True:
+            x = self.maxpool(x)
+        return x
+    
+    def rand_fcfu(self, x):
+        x = self.dconv_down1(x)
+  
+        fc = self.fc_conv(x)
+        fu = self.fu_conv(x)
+
+        _, C, H ,W = fc.size()
+        fc = fc.reshape(-1, 6, C, H, W)
+        random_indices = torch.randperm(6)
+        fc = fc[:, random_indices, :, :]
+        fc = fc.reshape(-1, C, H, W)
+        
+        _, C, H ,W = fu.size()
+        fu = fu.reshape(-1, 6, C, H, W)
+        B = fu.shape[0]
+        random_indices = torch.randperm(B)
+        fu = fu[random_indices, :, :, :]
+        fu = fu.reshape(-1, C, H, W)
+
+        x = self.fuse_both(fc + fu)
+        if self.last != True:
+            x = self.maxpool(x)
+        return x
+        
 class MaskedConv2d_3x3(nn.Module):
     def __init__(self, in_channels, out_channels, padding=1, bias=True):
         super(MaskedConv2d_3x3, self).__init__()

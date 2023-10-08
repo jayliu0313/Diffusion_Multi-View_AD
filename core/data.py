@@ -10,51 +10,8 @@ from torch.utils.data import DataLoader
 import numpy as np
 import random
 
-def add_random_masked(image, scale = 0.3, prob = 0.8):
-        if random.random() <= prob:
-            num = random.randint(3, 20)
-            for _ in range(num):
-                dim_channel, w, h = image.shape
-                x = random.randint(0, w - 1)
-                y = random.randint(0, h - 1)
-                new_w = random.randint(1, min(60, w - x))
-                new_h = random.randint(1, min(60, h - y))
-                noise = torch.randn((dim_channel, new_w, new_h)) * scale
-                image[:, x:x+new_w, y:y+new_h] += noise
-        return image
-
-# def gauss_noise_tensor(img, max_sigma = 0.3):
-#     assert isinstance(img, torch.Tensor)
-    
-#     dtype = img.dtype
-#     if not img.is_floating_point():
-#         img = img.to(torch.float32)
-#     max_sigma = torch.randint(0, 5, (img.shape[0],))
-#     out = img + torch.mul(max_sigma, torch.randn_like(img).clamp(-1, 1)).to(img.device)
-#     out = out.clamp(0, 1)
-#     if out.dtype != dtype:
-#         out = out.to(dtype)
-        
-#     return out
-
-def gauss_noise_tensor(img, max_range = 2):
-    assert isinstance(img, torch.Tensor)
-    
-    dtype = img.dtype
-    if not img.is_floating_point():
-        img = img.to(torch.float32)
-    img_norm = (
-            img.norm(dim=1).unsqueeze(1) / 3
-        )
-    scalar = torch.rand(img.shape[0]) * (max_range - 0.0) + 0.0
-    scalar = scalar.reshape(-1, 1, 1, 1).to(img.device)
-    out = img + scalar * torch.randn_like(img).to(img.device) * img_norm
-    out = out.clamp(0, 1)
-    if out.dtype != dtype:
-        out = out.to(dtype)
-        
-    return out
-
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
 def eyecandies_classes():
     return [
@@ -85,9 +42,6 @@ def mvtec3d_classes():
     ]
 
 
-MEAN = [0.0, 0.0, 0.0]
-STD = [255, 255, 255]
-
 class BaseDataset(Dataset):
 
     def __init__(self, split, class_name, img_size, dataset_path='datasets/eyecandies'):
@@ -105,7 +59,9 @@ class TestLightings(BaseDataset):
         super().__init__(split="test_public", class_name=class_name, img_size=img_size, dataset_path=dataset_path)
         self.gt_transform = transforms.Compose([
             transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.NEAREST),
-            transforms.ToTensor()])
+            transforms.ToTensor(),
+            # transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+        ])
         self.data_paths, self.gt_paths = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
     def load_dataset(self):
@@ -171,7 +127,8 @@ class MemoryLightings(BaseDataset):
         super().__init__(split="train", class_name=class_name, img_size=img_size, dataset_path=dataset_path)
         self.gt_transform = transforms.Compose([
             transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.NEAREST),
-            transforms.ToTensor()])
+            transforms.ToTensor(),
+            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)])
         self.data_paths = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
     def load_dataset(self):
@@ -226,6 +183,7 @@ class TrainLightings(Dataset):
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
          transforms.ToTensor(),
+        #  transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
         ])
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
@@ -287,6 +245,7 @@ class ValLightings(Dataset):
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
          transforms.ToTensor(),
+        #  transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
         ])
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1

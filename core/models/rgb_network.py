@@ -179,7 +179,7 @@ class Conv_AE(nn.Module):
         x = self.encode(x)
         fc = self.common_MLP(x)
         fu = self.unique_MLP(x)
-        x = self.fuse_both(fu)
+        x = self.fuse_both(fc + fu)
         out = self.decode(x)
         return out
 
@@ -199,10 +199,129 @@ class Conv_AE(nn.Module):
         out = self.decode(x)
         return out
     
-    def get_fc(self, x):
+    def get_meanfc(self, x):
         x = self.encode(x)
         fc = self.common_MLP(x)
-        return fc
+        mean_fc = torch.mean(fc, dim = 0)
+        return mean_fc
+    
+    def freeze_model(self):
+        for param in self.parameters():
+            param.requires_grad = False
+
+
+class Conv_Decomposition_AE(nn.Module):
+    def __init__(self, device, channel=32):
+        super(Conv_Decomposition_AE, self).__init__()
+        self.device = device
+        self.image_chennels = 3
+        self.img_size = 224
+        # self.fc_dim = 256
+        # self.fu_dim = 64
+        self.dconv_down1 = Conv_Basic(3, channel)
+        self.dconv_down2 = Conv_Basic(channel, channel*2)
+        self.dconv_down3 = Conv_Basic(channel*2, channel*4)
+        self.dconv_down4 = Conv_Basic(channel*4, channel*8, last=True)     
+        
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
+      
+        self.dconv_up3 = double_conv(channel * 8, channel * 4)
+        self.dconv_up2 = double_conv(channel * 4, channel * 2)
+        self.dconv_up1 = double_conv(channel * 2, channel)
+        
+        self.conv_last = nn.Sequential(
+            nn.Conv2d(channel, channel, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channel, 3, 1, 1),
+            nn.Sigmoid(),                            
+        )
+
+        # self.fc_loss = torch.nn.MSELoss()
+        # self.fu_loss = torch.nn.MSELoss()
+
+    def forward(self, x):
+        # add_random_masked(lighting)
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
+
+        x = self.encode(x)
+
+        # if self.training:
+        #     x = add_jitter(x, 30, 0.5)
+        out = self.decode(x)
+        return out
+    
+    def rand_rec(self, x):
+        # add_random_masked(lighting)
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
+        x = self.dconv_down1.rand_fcfu(x)
+        x = self.dconv_down2.rand_fcfu(x)
+        x = self.dconv_down3.rand_fcfu(x)
+        x = self.dconv_down4.rand_fcfu(x)
+        x = self.decode(x)
+        return x
+    
+    def rec_randrec(self, x):
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
+            
+        _x = self.encode(x)
+        out = self.decode(_x)
+
+        x = self.dconv_down1.rand_fcfu(x)
+        x = self.dconv_down2.rand_fcfu(x)
+        x = self.dconv_down3.rand_fcfu(x)
+        x = self.dconv_down4.rand_fcfu(x)
+        
+        rand_out = self.decode(x)
+        
+        return out, rand_out
+
+    def encode(self, x):
+        conv1 = self.dconv_down1(x)
+        conv2 = self.dconv_down2(conv1)
+        conv3 = self.dconv_down3(conv2)
+        conv4 = self.dconv_down4(conv3)
+
+        return conv4
+
+    def decode(self, x):
+        x = self.upsample(x)        
+        
+        x = self.dconv_up3(x)
+        x = self.upsample(x)              
+
+        x = self.dconv_up2(x)
+        x = self.upsample(x)
+        
+        x = self.dconv_up1(x)
+        
+        out = self.conv_last(x)
+        return out
+
+    def rec(self, x):
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
+        x = self.encode(x)
+        out = self.decode(x)
+        return out
+
+    def mean_rec(self, x):
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
+
+        x = self.encode(x)
+
+        # if self.training:
+        #     x = add_jitter(x, 30, 0.5)
+        fc = self.common_MLP(x)
+        fu = self.unique_MLP(x)  
+        mean_fc = torch.mean(fc, dim = 0)
+        mean_fc = mean_fc.repeat(6, 1, 1, 1)
+        x = self.fuse_both(mean_fc + fu)
+        out = self.decode(x)
+        return out
     
     def get_meanfc(self, x):
         x = self.encode(x)
@@ -214,139 +333,201 @@ class Conv_AE(nn.Module):
         for param in self.parameters():
             param.requires_grad = False
 
-# V2
-# class Conv_AE(nn.Module):
-#     def __init__(self, device, channel=16):
-#         super(Conv_AE, self).__init__()
-#         self.device = device
-#         self.image_chennels = 3
-#         self.img_size = 224
-#         self.fc_dim = 256
-#         self.fu_dim = 128
-#         self.dconv_down1 = double_conv(3, channel)
-#         self.dconv_down2 = double_conv(channel, channel * 2)
-#         self.dconv_down3 = double_conv(channel * 2, channel * 4)
-#         self.dconv_down4 = double_conv(channel * 4, channel * 8)        
+# ResNet Layerwise Decomposition
+class ResNet_Decom_AE(nn.Module):
+    def __init__(self, device, channel=32):
+        super(ResNet_Decom_AE, self).__init__()
+        self.device = device
+        self.image_chennels = 3
+        self.img_size = 224
+        # self.fc_dim = 256
+        # self.fu_dim = 64
         
-#         self.maxpool = nn.MaxPool2d(2)
-#         self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
-#         self.common_MLP = nn.Sequential(
-#             nn.Conv2d(channel * 8, self.fc_dim, 3, padding=1),
-#             nn.ReLU(inplace=True),
-#         )
-#         self.unique_MLP = nn.Sequential(
-#             nn.Conv2d(channel * 8, self.fu_dim, 3, padding=1),
-#             nn.ReLU(inplace=True),
-#         )
-#         self.fuse_fc = nn.Sequential(
-#             nn.Conv2d(self.fc_dim, self.fc_dim, 3, padding=1),
-#         )
-#         self.fuse_fu = nn.Sequential(
-#             nn.Conv2d(self.fu_dim, self.fu_dim, 3, padding=1),
-#         )
-#         self.fuse_both = nn.Sequential(
-#             nn.ReLU(inplace=True),
-#             nn.Conv2d(channel * 8, channel * 8, 3, padding=1),
-#             nn.ReLU(inplace=True),
-#             nn.Conv2d(channel * 8, channel * 8, 3, padding=1),
-#         )
-#         self.dconv_up3 = double_conv(channel * 8, channel * 4)
-#         self.dconv_up2 = double_conv(channel * 4, channel * 2)
-#         self.dconv_up1 = double_conv(channel * 2, channel)
+        self.dconv_down1 = BasicBlock(3, channel, 2, short_cut=conv1x1(3, channel, 2))
+        self.decom_block1 = Decom_Block(channel)
+        self.dconv_down2 = BasicBlock(channel, channel*2, 2, short_cut=conv1x1(channel, channel*2, 2))
+        self.decom_block2 = Decom_Block(channel*2)
+        self.dconv_down3 = BasicBlock(channel*2, channel*4, 2, short_cut=conv1x1(channel*2, channel*4, 2))
+        self.decom_block3 = Decom_Block(channel*4)
+        self.dconv_down4 = BasicBlock(channel*4, channel*8, 1, short_cut=conv1x1(channel*4, channel*8, 1))     
+        self.decom_block4 = Decom_Block(channel*8)
         
-#         self.conv_last = nn.Sequential(
-#             nn.Conv2d(channel, channel, 3, padding=1),
-#             nn.ReLU(inplace=True),
-#             nn.Conv2d(channel, 3, 1, 1),
-#             nn.Sigmoid(),                            
-#         )
+        # self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
+      
+        self.dconv_up3 = BasicBlock(channel * 8, channel * 4, upsample=nn.Upsample(scale_factor=2, mode="bilinear"), 
+                                    short_cut=nn.Sequential(conv1x1(channel * 8, channel * 4, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
+        self.dconv_up2 = BasicBlock(channel * 4, channel * 2, upsample=nn.Upsample(scale_factor=2, mode="bilinear"),
+                                    short_cut=nn.Sequential(conv1x1(channel * 4, channel * 2, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
+        self.dconv_up1 = BasicBlock(channel * 2, channel, upsample=nn.Upsample(scale_factor=2, mode="bilinear"),
+                                    short_cut=nn.Sequential(conv1x1(channel * 2, channel, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
+        self.conv_last = BasicBlock(channel, 3, upsample=None, short_cut=conv1x1(channel, 3, stride=1))
 
-#         self.fc_loss = torch.nn.MSELoss()
-#         self.fu_loss = torch.nn.MSELoss()
+    def forward(self, x):
+        # add_random_masked(lighting)
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
 
-#     def forward(self, lighting):
-#         # add_random_masked(lighting)
-#         if self.training:
-#             lighting = gauss_noise_tensor(lighting, 1.2)
+        x = self.encode(x)
 
-#         x = self.encode(lighting)
-
-#         # if self.training:
-#         #     x = add_jitter(x, 30, 0.5)
-#         fc = self.common_MLP(x)
-#         fu = self.unique_MLP(x)
-        
-#         # fc process
-#         _, C, H ,W = fc.size()
-#         fc = fc.reshape(-1, 6, C, H, W)
-#         B = fc.shape[0]
-#         mean_fc = torch.mean(fc, dim = 1)
-#         mean_fc = mean_fc.unsqueeze(1).repeat(1, 6, 1, 1, 1)
-#         loss_fc = self.fc_loss(fc, mean_fc)
-#         random_indices = torch.randperm(6)
-#         fc = fc[:, random_indices, :, :]
-#         fc = fc.reshape(-1, C, H, W)
-#         fc = self.fuse_fc(fc)
-        
-#         # fu process
-#         _, C, H ,W = fu.size()
-#         fu = fu.reshape(-1, 6, C, H, W)
-        
-#         mean_fu = torch.mean(fu, dim = 0)
-#         mean_fu = mean_fu.unsqueeze(0).repeat(B, 1, 1, 1, 1)
-#         loss_fu = self.fu_loss(fu, mean_fu)
-#         random_indices = torch.randperm(B - int(2/B))
-#         fu = fu[random_indices, :, :, :]
-#         fu = fu.reshape(-1, C, H, W)
-#         fu = self.fuse_fu(fu)
-        
-#         car_feature = torch.cat([fc, fu], dim=1)
-#         x = self.fuse_both(car_feature)
-        
-#         out = self.decode(x)
-#         return out, loss_fc, loss_fu
-            
-#     def encode(self, x):
-#         conv1 = self.dconv_down1(x)
-        
-#         x = self.maxpool(conv1)
-
-#         conv2 = self.dconv_down2(x)
-#         x = self.maxpool(conv2)
-        
-#         conv3 = self.dconv_down3(x)
-#         x = self.maxpool(conv3)   
+        # if self.training:
+        #     x = add_jitter(x, 30, 0.5)
+        out = self.decode(x)
+        return out
     
-#         x = self.dconv_down4(x)
+    def rand_forward(self, x):
+        # add_random_masked(lighting)
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
+        x = self.rand_encode(x)
+        x = self.decode(x)
+        return x
 
-#         return x
+    def rand_encode(self, x):
+        x = self.dconv_down1(x)
+        x = self.decom_block1.rand_forward(x)
+        x = self.dconv_down2(x)
+        x = self.decom_block2.rand_forward(x)
+        x = self.dconv_down3(x)
+        x = self.decom_block3.rand_forward(x)
+        x = self.dconv_down4(x)
+        x = self.decom_block4.rand_forward(x)
+        return x
+    
+    def encode(self, x):
+        x = self.dconv_down1(x)
+        x = self.decom_block1(x)
+        x = self.dconv_down2(x)
+        x = self.decom_block2(x)
+        x = self.dconv_down3(x)
+        x = self.decom_block3(x)
+        x = self.dconv_down4(x)
+        x = self.decom_block4(x)
+        return x
 
-#     def decode(self, x):
-#         x = self.upsample(x)        
+    def decode(self, x):
+        x = self.dconv_up3(x)
+        x = self.dconv_up2(x)
+        x = self.dconv_up1(x)
+        out = self.conv_last(x)
+        return out
+
+    def mean_rec(self, x):
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
+
+        x = self.encode(x)
+
+        # if self.training:
+        #     x = add_jitter(x, 30, 0.5)
+        fc = self.common_MLP(x)
+        fu = self.unique_MLP(x)  
+        mean_fc = torch.mean(fc, dim = 0)
+        mean_fc = mean_fc.repeat(6, 1, 1, 1)
+        x = self.fuse_both(mean_fc + fu)
+        out = self.decode(x)
+        return out
+    
+    def get_meanfc(self, x):
+        x = self.encode(x)
+        fc = self.common_MLP(x)
+        mean_fc = torch.mean(fc, dim = 0)
+        return mean_fc
+    
+    def freeze_model(self):
+        for param in self.parameters():
+            param.requires_grad = False
+
+# ResNet BottleNeck Decomposition
+class ResNetAE_Decom_Bottleneck(nn.Module):
+    def __init__(self, device, channel=32):
+        super(ResNetAE_Decom_Bottleneck, self).__init__()
+        self.device = device
+        self.image_chennels = 3
+        self.img_size = 224
+        # self.fc_dim = 256
+        # self.fu_dim = 64
         
-#         x = self.dconv_up3(x)
-#         x = self.upsample(x)              
+        self.dconv_down1 = BasicBlock(3, channel, 2, short_cut=conv1x1(3, channel, 2))
+        self.dconv_down2 = BasicBlock(channel, channel*2, 2, short_cut=conv1x1(channel, channel*2, 2))
+        self.dconv_down3 = BasicBlock(channel*2, channel*4, 2, short_cut=conv1x1(channel*2, channel*4, 2))
+        self.dconv_down4 = BasicBlock(channel*4, channel*8, 1, short_cut=conv1x1(channel*4, channel*8, 1))     
+        self.decomp_block = Decom_Block(channel*8)
+      
+        self.dconv_up3 = BasicBlock(channel * 8, channel * 4, upsample=nn.Upsample(scale_factor=2, mode="bilinear"), 
+                                    short_cut=nn.Sequential(conv1x1(channel * 8, channel * 4, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
+        self.dconv_up2 = BasicBlock(channel * 4, channel * 2, upsample=nn.Upsample(scale_factor=2, mode="bilinear"),
+                                    short_cut=nn.Sequential(conv1x1(channel * 4, channel * 2, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
+        self.dconv_up1 = BasicBlock(channel * 2, channel, upsample=nn.Upsample(scale_factor=2, mode="bilinear"),
+                                    short_cut=nn.Sequential(conv1x1(channel * 2, channel, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
+        self.conv_last = BasicBlock(channel, 3, upsample=None, short_cut=conv1x1(channel, 3, stride=1))
 
-#         x = self.dconv_up2(x)
-#         x = self.upsample(x)
+    def forward(self, x):
+        x = self.encode(x)
+        x = self.decomp_block(x)
+        out = self.decode(x)
+        return out
+    
+    def rec_randrec_forward(self, x):
+        # add_random_masked(lighting)
+        # if self.training:
+        #     x = gauss_noise_tensor(x, 1.0)
+        x = self.encode(x)
         
-#         x = self.dconv_up1(x)
+        # normal reconstruction
+        feat = self.decomp_block(x)
+        out = self.decode(feat)
+        # random change fc fu reconstruction
+        rand_feat = self.decomp_block.rand_forward(x)
+        rand_out = self.decode(rand_feat)
+        return out, rand_out
+
+    def encode(self, x):
+        x = self.dconv_down1(x)
+        x = self.dconv_down2(x)
+        x = self.dconv_down3(x)
+        x = self.dconv_down4(x)
+        return x
+
+    def decode(self, x):
+        x = self.dconv_up3(x)
+        x = self.dconv_up2(x)
+        x = self.dconv_up1(x)
+        out = self.conv_last(x)
+        return out
+
+    def mean_rec(self, x):
+        if self.training:
+            x = gauss_noise_tensor(x, 1.0)
+
+        x = self.encode(x)
+
+        # if self.training:
+        #     x = add_jitter(x, 30, 0.5)
+        fc = self.get_fc(x)
+        fu = self.get_fu(x)  
+        mean_fc = torch.mean(fc, dim = 0)
+        mean_fc = mean_fc.repeat(6, 1, 1, 1)
+        x = self.fuse_both(mean_fc + fu)
+        out = self.decode(x)
+        return out
+    
+    def get_fc(self, x):
+        fc = self.decomp_block.get_fc(x)
+        return fc
         
-#         out = self.conv_last(x)
-#         return out
-
-#     def rec(self, x):
-#         x = self.encode(x)
-#         fc = self.common_MLP(x)
-#         fu = self.unique_MLP(x)
-#         x = self.fuse_both(fu)
-#         out = self.decode(x)
-#         return out
-
-#     def freeze_model(self):
-#         for param in self.parameters():
-#             param.requires_grad = False
-
+    def get_meanfc(self, x):
+        mean_fc = self.decomp_block.get_meanfc(x)
+        return mean_fc
+    
+    def get_fu(self, x):
+        x = self.decomp_block.get_fu(x)
+    
+    def fuse_both(self, fc, fu):
+        return self.decomp_block.fuse_both(fc, fu) 
+    
+    def freeze_model(self):
+        for param in self.parameters():
+            param.requires_grad = False
 
 # pureConv_woFCFU
 # class Conv_AE(nn.Module):

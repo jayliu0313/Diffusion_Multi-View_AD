@@ -72,7 +72,7 @@ class Rec(Base_Reconstruct):
     
     def predict(self, item, lightings, _, gt, label):
         lightings = lightings.squeeze().to(self.device)
-        out =  self.rgb_model.rec(lightings)
+        out = self.rgb_model(lightings)
 
         lightings = self.average(lightings)
         out = self.average(out)
