@@ -2,19 +2,27 @@ import torch
 import argparse
 import numpy as np
 import os
+from torchvision import transforms
 from tqdm import tqdm
 from utils.au_pro_util import calculate_au_pro
 from utils.visualize_util import *
 from sklearn.metrics import roc_auc_score
 from core.models.rgb_network import *
-from core.models.nmap_network import NMap_AE, NMap_Repair_Feat_AE
+from core.models.nmap_network import NMap_AE
+from core.models.backnone import RGB_Extractor
+from core.models.unet_model import UNet_Decom, ResUNet_Decom_AE
+
 
 class Base_Method():
     def __init__(self, args, cls_path):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.load_model(args.rgb_ckpt_path, args.nmap_ckpt_path)
         self.initialize_score()
-
+        
+        # self.transform = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+        # self.feature_extractor = RGB_Extractor(self.device).to(self.device)
+        # self.feature_extractor.freeze_parameters(layers=[], freeze_bn=True)
+        
         self.criteria = torch.nn.MSELoss()    
         # self.fc_dim = args.common_feature_dim
         self.patch_lib = []
@@ -25,7 +33,8 @@ class Base_Method():
         self.reconstruct_path = os.path.join(cls_path, "Reconstruction")
         self.score_type = args.score_type
         
-        self.average = torch.nn.AvgPool2d(3, stride=1, padding=1)
+        self.pdist = torch.nn.PairwiseDistance(p=2, eps= 1e-12)
+        self.average = torch.nn.AvgPool2d(3, stride=1)
         self.resize = torch.nn.AdaptiveAvgPool2d((28, 28))
         # self.blur = torch.Gua(4).to(self.device)
 

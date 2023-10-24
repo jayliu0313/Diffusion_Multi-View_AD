@@ -5,10 +5,29 @@ from utils.visualize_util import display_one_img, display_image, display_mean_fu
 from utils.utils import t2np
 from patchify import patchify
 
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+
 class Base_Reconstruct(Base_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
-
+    
+    def get_pretrained_feature(self, x):
+        rgb_feature_maps = self.rgb_model.get_layer_feature(x)
+        rgb_resized_maps = [self.resize(self.average(fmap)) for fmap in rgb_feature_maps]
+        rgb_patch = torch.cat(rgb_resized_maps, 1)
+        return rgb_patch
+        
+    def compute_feature_dist(self, feat1, feat2):
+        feat1 = feat1.permute(0, 2, 3, 1)
+        feat2 = feat2.permute(0, 2, 3, 1)
+        s_map_size28 = self.pdist(feat1, feat2)
+        s_map_size28 = torch.mean(s_map_size28, dim=0)
+        s = torch.max(s_map_size28)
+        s_map_size28 = s_map_size28.view(1, 1, 28, 28)
+        s_map_size_img = torch.nn.functional.interpolate(s_map_size28, size=(self.image_size, self.image_size), mode='bilinear', align_corners=False)
+        return s_map_size_img.to('cpu'), s.to('cpu')
+    
     def compute_score(self, score_maps, top_k = 1):
         six_map_patches = []
         for i in range(score_maps.shape[0]):
@@ -72,63 +91,43 @@ class Rec(Base_Reconstruct):
     
     def predict(self, item, lightings, _, gt, label):
         lightings = lightings.squeeze().to(self.device)
+        # print(lightings.min())
+        # print(lightings.max())
         out = self.rgb_model(lightings)
-
-        lightings = self.average(lightings)
-        out = self.average(out)
-        
-        loss = self.criteria(lightings, out)
-        
+        out = torch.clip(out, min=lightings.min(), max=lightings.max())
+        # print(out.min())
+        # print(out.max())
+        if False:
+            # img_avg = torch.nn.AvgPool2d(3, stride=1, padding=1)
+            # imgnet_in = img_avg(lightings)
+            # imgnet_out = img_avg(out)
+    
+            in_feat = self.get_pretrained_feature(lightings)
+            repaired_feat = self.get_pretrained_feature(out)
+            final_map, final_score = self.compute_feature_dist(in_feat, repaired_feat)
+            out_avg = self.average(out)
+            lightings_avg = self.average(lightings)
+            loss = self.criteria(lightings_avg, out_avg)
+        else:
+            img_avg = torch.nn.AvgPool2d(3, stride=1, padding=1)
+            out = img_avg(out)
+            lightings = img_avg(lightings)
+            loss = self.criteria(lightings, out)
+            score_maps = torch.sum(torch.abs(lightings - out), dim=1)
+            score_maps = score_maps.unsqueeze(1)
+            final_score = self.compute_score(score_maps)
+            if(self.score_type == 0):
+                final_map, _, img = self.compute_max_smap(score_maps, lightings)
+            elif(self.score_type == 1):
+                final_map, _, img = self.compute_mean_smap(score_maps, lightings)
+            if item % 2 == 0:
+                display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
         self.cls_rec_loss += loss.item()
-        score_maps = torch.sum(torch.abs(lightings - out), dim=1)
-        score_maps = score_maps.unsqueeze(1)
-        final_score = self.compute_score(score_maps)
-        if(self.score_type == 0):
-            final_map, _, img = self.compute_max_smap(score_maps, lightings)
-        elif(self.score_type == 1):
-            final_map, _, img = self.compute_mean_smap(score_maps, lightings)
-        
         self.image_labels.append(label)
         self.image_preds.append(t2np(final_score))
-        self.image_list.append(t2np(img))
+        self.image_list.append(t2np(lightings[5, :, :, :]))
         self.pixel_preds.append(t2np(final_map))
         self.pixel_labels.extend(t2np(gt))
-
-        if item % 2 == 0:
-            display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
-
-# test method 3: not use
-class Recursive_Rec(Base_Reconstruct):
-    def __init__(self, args, cls_path):
-        super().__init__(args, cls_path)
-        self.times = 5
-
-    def predict(self, item, lightings, _, gt, label):
-        lightings = lightings.squeeze().to(self.device)
-        in_ = lightings
-        for _ in range(self.times):
-            out, _ =  self.model(in_)
-            in_ = out
-        out = self.average(out)
-        lightings = self.average(lightings)
-        loss = self.criteria(lightings, out)
-        self.cls_rec_loss += loss.item()
-        score_maps = torch.sum(torch.abs(lightings - out), dim=1)
-        score_maps = score_maps.unsqueeze(1)
-
-        if(self.score_type == 0):
-            final_map, final_score, img = self.compute_max_smap(score_maps, lightings)
-        elif(self.score_type == 1):
-            final_map, final_score, img = self.compute_mean_smap(score_maps, lightings)
-
-        self.image_labels.append(label)
-        self.image_preds.append(t2np(final_score))
-        self.image_list.append(t2np(img))
-        self.pixel_preds.append(t2np(final_map))
-        self.pixel_labels.extend(t2np(gt))
-
-        # if item % 5 == 0:
-        display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
 
 # normal map reconstruction
 class Nmap_Rec(Base_Reconstruct):

@@ -209,7 +209,6 @@ class Conv_AE(nn.Module):
         for param in self.parameters():
             param.requires_grad = False
 
-
 class Conv_Decomposition_AE(nn.Module):
     def __init__(self, device, channel=32):
         super(Conv_Decomposition_AE, self).__init__()
@@ -334,52 +333,55 @@ class Conv_Decomposition_AE(nn.Module):
             param.requires_grad = False
 
 # ResNet Layerwise Decomposition
-class ResNet_Decom_AE(nn.Module):
-    def __init__(self, device, channel=32):
+# class ResNet_Decom_AE(nn.Module):
+    def __init__(self, device, ch=32, mid_ch=16):
         super(ResNet_Decom_AE, self).__init__()
         self.device = device
-        self.image_chennels = 3
+        img_ch = 3
         self.img_size = 224
-        # self.fc_dim = 256
-        # self.fu_dim = 64
         
-        self.dconv_down1 = BasicBlock(3, channel, 2, short_cut=conv1x1(3, channel, 2))
-        self.decom_block1 = Decom_Block(channel)
-        self.dconv_down2 = BasicBlock(channel, channel*2, 2, short_cut=conv1x1(channel, channel*2, 2))
-        self.decom_block2 = Decom_Block(channel*2)
-        self.dconv_down3 = BasicBlock(channel*2, channel*4, 2, short_cut=conv1x1(channel*2, channel*4, 2))
-        self.decom_block3 = Decom_Block(channel*4)
-        self.dconv_down4 = BasicBlock(channel*4, channel*8, 1, short_cut=conv1x1(channel*4, channel*8, 1))     
-        self.decom_block4 = Decom_Block(channel*8)
+        self.dconv_down1 = BasicBlock(img_ch, ch, 2, short_cut=conv1x1(3, ch, 2))
+        self.decom_block1 = Decom_Block(ch, mid_ch)
+        self.dconv_down2 = BasicBlock(ch, ch*2, 2, short_cut=conv1x1(ch, ch*2, 2))
+        self.decom_block2 = Decom_Block(ch*2, mid_ch*2)
+        self.dconv_down3 = BasicBlock(ch*2, ch*4, 2, short_cut=conv1x1(ch*2, ch*4, 2))
+        self.decom_block3 = Decom_Block(ch*4, mid_ch*4)
+        self.dconv_down4 = BasicBlock(ch*4, ch*8, 1, short_cut=conv1x1(ch*4, ch*8, 1))     
+        self.decom_block4 = Decom_Block(ch*8, mid_ch*8)
         
         # self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
       
-        self.dconv_up3 = BasicBlock(channel * 8, channel * 4, upsample=nn.Upsample(scale_factor=2, mode="bilinear"), 
-                                    short_cut=nn.Sequential(conv1x1(channel * 8, channel * 4, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
-        self.dconv_up2 = BasicBlock(channel * 4, channel * 2, upsample=nn.Upsample(scale_factor=2, mode="bilinear"),
-                                    short_cut=nn.Sequential(conv1x1(channel * 4, channel * 2, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
-        self.dconv_up1 = BasicBlock(channel * 2, channel, upsample=nn.Upsample(scale_factor=2, mode="bilinear"),
-                                    short_cut=nn.Sequential(conv1x1(channel * 2, channel, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
-        self.conv_last = BasicBlock(channel, 3, upsample=None, short_cut=conv1x1(channel, 3, stride=1))
+        upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.dconv_up3 = BasicBlock(ch * 8, ch * 4, upsample=upsample, 
+                                    short_cut=nn.Sequential(conv1x1(ch * 8, ch * 4, stride=1), upsample))
+        self.dconv_up2 = BasicBlock(ch * 4, ch * 2, upsample=upsample,
+                                    short_cut=nn.Sequential(conv1x1(ch * 4, ch * 2, stride=1), upsample))
+        self.dconv_up1 = BasicBlock(ch * 2, ch, upsample=upsample,
+                                    short_cut=nn.Sequential(conv1x1(ch * 2, ch, stride=1), upsample))
+        self.conv_last = BasicBlock(ch, 3, upsample=None, short_cut=conv1x1(ch, 3, stride=1))
 
     def forward(self, x):
-        # add_random_masked(lighting)
-        if self.training:
-            x = gauss_noise_tensor(x, 1.0)
-
         x = self.encode(x)
-
-        # if self.training:
-        #     x = add_jitter(x, 30, 0.5)
         out = self.decode(x)
         return out
     
     def rand_forward(self, x):
         # add_random_masked(lighting)
-        if self.training:
-            x = gauss_noise_tensor(x, 1.0)
+        # if self.training:
+        #     x = gauss_noise_tensor(x, 1.0)
         x = self.rand_encode(x)
         x = self.decode(x)
+        return x
+
+    def encode(self, x):
+        x = self.dconv_down1(x)
+        x = self.decom_block1(x)
+        x = self.dconv_down2(x)
+        x = self.decom_block2(x)
+        x = self.dconv_down3(x)
+        x = self.decom_block3(x)
+        x = self.dconv_down4(x)
+        x = self.decom_block4(x)
         return x
 
     def rand_encode(self, x):
@@ -393,17 +395,6 @@ class ResNet_Decom_AE(nn.Module):
         x = self.decom_block4.rand_forward(x)
         return x
     
-    def encode(self, x):
-        x = self.dconv_down1(x)
-        x = self.decom_block1(x)
-        x = self.dconv_down2(x)
-        x = self.decom_block2(x)
-        x = self.dconv_down3(x)
-        x = self.decom_block3(x)
-        x = self.dconv_down4(x)
-        x = self.decom_block4(x)
-        return x
-
     def decode(self, x):
         x = self.dconv_up3(x)
         x = self.dconv_up2(x)
@@ -437,6 +428,113 @@ class ResNet_Decom_AE(nn.Module):
         for param in self.parameters():
             param.requires_grad = False
 
+# class ResNet_Decom_AE(nn.Module):
+#     def __init__(self, device, ch=32, mid_ch=16):
+#         super(ResNet_Decom_AE, self).__init__()
+#         self.device = device
+#         img_ch = 3
+#         self.img_size = 224
+#         # self.fc_dim = 256
+#         # self.fu_dim = 64
+        
+#         self.dconv_down1 = BasicBlock(img_ch, ch, 2, short_cut=conv1x1(3, ch, 2))
+#         self.decom_block1 = Decom_Block(ch, mid_ch)
+#         self.dconv_down2 = BasicBlock(ch, ch*2, 2, short_cut=conv1x1(ch, ch*2, 2))
+#         self.decom_block2 = Decom_Block(ch*2, mid_ch*2)
+#         self.dconv_down3 = BasicBlock(ch*2, ch*4, 2, short_cut=conv1x1(ch*2, ch*4, 2))
+#         self.decom_block3 = Decom_Block(ch*4, mid_ch*4)
+#         self.dconv_down4 = BasicBlock(ch*4, ch*8, 2, short_cut=conv1x1(ch*4, ch*8, 2))     
+#         self.decom_block4 = Decom_Block(ch*8, mid_ch*8)
+        
+#         # self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)        
+      
+#         upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+#         self.dconv_up4 = BasicBlock(ch * 8, ch * 4, upsample=upsample, 
+#                                     short_cut=nn.Sequential(conv1x1(ch * 8, ch * 4, stride=1), upsample))
+#         self.dconv_up3 = BasicBlock(ch * 4, ch * 2, upsample=upsample,
+#                                     short_cut=nn.Sequential(conv1x1(ch * 4, ch * 2, stride=1), upsample))
+#         self.dconv_up2 = BasicBlock(ch * 2, ch, upsample=upsample,
+#                                     short_cut=nn.Sequential(conv1x1(ch * 2, ch, stride=1), upsample))
+#         self.dconv_up1 = BasicBlock(ch, ch, upsample=upsample, 
+#                                     short_cut=nn.Sequential(conv1x1(ch, ch, stride=1), upsample))
+#         self.dconv_last = BasicBlock(ch, 3, upsample=None, 
+#                                     short_cut=nn.Sequential(conv1x1(ch, 3, stride=1)))
+#     def forward(self, x):
+#         # add_random_masked(lighting)
+#         # if self.training:
+#         #     x = gauss_noise_tensor(x, 1.0)
+
+#         x = self.encode(x)
+
+#         # if self.training:
+#         #     x = add_jitter(x, 30, 0.5)
+#         out = self.decode(x)
+#         return out
+    
+#     def rand_forward(self, x):
+#         # add_random_masked(lighting)
+#         # if self.training:
+#         #     x = gauss_noise_tensor(x, 1.0)
+#         x = self.rand_encode(x)
+#         x = self.decode(x)
+#         return x
+
+#     def encode(self, x):
+#         x = self.dconv_down1(x)
+#         x = self.decom_block1(x)
+#         x = self.dconv_down2(x)
+#         x = self.decom_block2(x)
+#         x = self.dconv_down3(x)
+#         x = self.decom_block3(x)
+#         x = self.dconv_down4(x)
+#         x = self.decom_block4(x)
+#         return x
+
+#     def rand_encode(self, x):
+#         x = self.dconv_down1(x)
+#         x = self.decom_block1.rand_forward(x)
+#         x = self.dconv_down2(x)
+#         x = self.decom_block2.rand_forward(x)
+#         x = self.dconv_down3(x)
+#         x = self.decom_block3.rand_forward(x)
+#         x = self.dconv_down4(x)
+#         x = self.decom_block4.rand_forward(x)
+#         return x
+    
+#     def decode(self, x):
+#         x = self.dconv_up4(x)
+#         x = self.dconv_up3(x)
+#         x = self.dconv_up2(x)
+#         x = self.dconv_up1(x)
+#         out = self.dconv_last(x)
+#         return out
+
+#     def mean_rec(self, x):
+#         if self.training:
+#             x = gauss_noise_tensor(x, 1.0)
+
+#         x = self.encode(x)
+
+#         # if self.training:
+#         #     x = add_jitter(x, 30, 0.5)
+#         fc = self.common_MLP(x)
+#         fu = self.unique_MLP(x)  
+#         mean_fc = torch.mean(fc, dim = 0)
+#         mean_fc = mean_fc.repeat(6, 1, 1, 1)
+#         x = self.fuse_both(mean_fc + fu)
+#         out = self.decode(x)
+#         return out
+    
+#     def get_meanfc(self, x):
+#         x = self.encode(x)
+#         fc = self.common_MLP(x)
+#         mean_fc = torch.mean(fc, dim = 0)
+#         return mean_fc
+    
+#     def freeze_model(self):
+#         for param in self.parameters():
+#             param.requires_grad = False
+
 # ResNet BottleNeck Decomposition
 class ResNetAE_Decom_Bottleneck(nn.Module):
     def __init__(self, device, channel=32):
@@ -444,21 +542,19 @@ class ResNetAE_Decom_Bottleneck(nn.Module):
         self.device = device
         self.image_chennels = 3
         self.img_size = 224
-        # self.fc_dim = 256
-        # self.fu_dim = 64
         
         self.dconv_down1 = BasicBlock(3, channel, 2, short_cut=conv1x1(3, channel, 2))
         self.dconv_down2 = BasicBlock(channel, channel*2, 2, short_cut=conv1x1(channel, channel*2, 2))
         self.dconv_down3 = BasicBlock(channel*2, channel*4, 2, short_cut=conv1x1(channel*2, channel*4, 2))
         self.dconv_down4 = BasicBlock(channel*4, channel*8, 1, short_cut=conv1x1(channel*4, channel*8, 1))     
         self.decomp_block = Decom_Block(channel*8)
-      
-        self.dconv_up3 = BasicBlock(channel * 8, channel * 4, upsample=nn.Upsample(scale_factor=2, mode="bilinear"), 
-                                    short_cut=nn.Sequential(conv1x1(channel * 8, channel * 4, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
-        self.dconv_up2 = BasicBlock(channel * 4, channel * 2, upsample=nn.Upsample(scale_factor=2, mode="bilinear"),
-                                    short_cut=nn.Sequential(conv1x1(channel * 4, channel * 2, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
-        self.dconv_up1 = BasicBlock(channel * 2, channel, upsample=nn.Upsample(scale_factor=2, mode="bilinear"),
-                                    short_cut=nn.Sequential(conv1x1(channel * 2, channel, stride=1), nn.Upsample(scale_factor=2, mode="bilinear")))
+        upsample = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.dconv_up3 = BasicBlock(channel * 8, channel * 4, upsample=upsample, 
+                                    short_cut=nn.Sequential(conv1x1(channel * 8, channel * 4, stride=1), upsample))
+        self.dconv_up2 = BasicBlock(channel * 4, channel * 2, upsample=upsample,
+                                    short_cut=nn.Sequential(conv1x1(channel * 4, channel * 2, stride=1), upsample))
+        self.dconv_up1 = BasicBlock(channel * 2, channel, upsample=upsample,
+                                    short_cut=nn.Sequential(conv1x1(channel * 2, channel, stride=1), upsample))
         self.conv_last = BasicBlock(channel, 3, upsample=None, short_cut=conv1x1(channel, 3, stride=1))
 
     def forward(self, x):
@@ -468,7 +564,6 @@ class ResNetAE_Decom_Bottleneck(nn.Module):
         return out
     
     def rec_randrec_forward(self, x):
-        # add_random_masked(lighting)
         # if self.training:
         #     x = gauss_noise_tensor(x, 1.0)
         x = self.encode(x)
@@ -476,7 +571,7 @@ class ResNetAE_Decom_Bottleneck(nn.Module):
         # normal reconstruction
         feat = self.decomp_block(x)
         out = self.decode(feat)
-        # random change fc fu reconstruction
+        # random change fc fu reconstruction for bottleneck
         rand_feat = self.decomp_block.rand_forward(x)
         rand_out = self.decode(rand_feat)
         return out, rand_out
@@ -510,6 +605,18 @@ class ResNetAE_Decom_Bottleneck(nn.Module):
         x = self.fuse_both(mean_fc + fu)
         out = self.decode(x)
         return out
+
+    def get_layer_feature(self, x):
+        features = []
+        x = self.dconv_down1(x)
+        features.append(x)
+        x = self.dconv_down2(x)
+        features.append(x)
+        x = self.dconv_down3(x)
+        features.append(x)
+        x = self.dconv_down4(x)
+        features.append(x)
+        return features
     
     def get_fc(self, x):
         fc = self.decomp_block.get_fc(x)

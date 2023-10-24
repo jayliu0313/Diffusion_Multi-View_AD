@@ -10,21 +10,21 @@ from torch.utils.data import DataLoader
 import numpy as np
 import random
 
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD = [0.229, 0.224, 0.225]
+# IMAGENET_MEAN = [0.485, 0.456, 0.406]
+# IMAGENET_STD = [0.229, 0.224, 0.225]
 
 def eyecandies_classes():
     return [
         'CandyCane',
         'ChocolateCookie',
-        # 'ChocolatePraline',
-        # 'Confetto',
+        'ChocolatePraline',
+        'Confetto',
         'GummyBear',
-        # 'HazelnutTruffle',
+        'HazelnutTruffle',
         'LicoriceSandwich',
-        # 'Lollipop',
-        # 'Marshmallow',
-        # 'PeppermintCandy',   
+        'Lollipop',
+        'Marshmallow',
+        'PeppermintCandy',   
     ]
 
 def mvtec3d_classes():
@@ -182,8 +182,8 @@ class TrainLightings(Dataset):
         self.size = img_size
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
-         transforms.ToTensor(),
-        #  transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+        transforms.ToTensor(),
+        #  transforms.Normalize(mean=0.5, std=)
         ])
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
@@ -229,9 +229,11 @@ class TrainLightings(Dataset):
         # noise_images = []
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
-            img = self.rgb_transform(img)
+            img = self.rgb_transform(img) 
             images.append(img)
         images = torch.stack(images)
+        images = images*2.0 - 1.0
+        
         normal_path = img_path[1]
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
@@ -244,7 +246,7 @@ class ValLightings(Dataset):
         self.size = img_size
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
-         transforms.ToTensor(),
+        transforms.ToTensor(),
         #  transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
         ])
         self.img_path = dataset_path
@@ -296,6 +298,7 @@ class ValLightings(Dataset):
             images.append(img)
             # noise_images.append(noise_img)
         images = torch.stack(images)
+        images = images.float()*2 - 1
         # noise_images = torch.stack(noise_images)
         normal_path = img_path[1]
         depth_path = img_path[2]
@@ -382,31 +385,31 @@ def test_lightings_loader(args, cls, split):
         dataset = MemoryLightings(cls, args.image_size, args.data_path)
     elif split == 'test':
         dataset = TestLightings(cls, args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, drop_last=False,
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, drop_last=False,
                               pin_memory=True)
     return data_loader
 
 def train_lightings_loader(args):
     dataset = TrainLightings(args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=True, drop_last=True,
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=True, drop_last=True,
                               pin_memory=True)
     return data_loader
 
 def val_lightings_loader(args):
     dataset = ValLightings(args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=False, drop_last=True,
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=True,
                               pin_memory=True)
     return data_loader
 
 def train_nmap_loader(args):
     dataset = TrainNmap(args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=True, drop_last=True,
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=True, drop_last=True,
                               pin_memory=True)
     return data_loader
 
 def val_nmap_loader(args):
     dataset = ValNmap(args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=8, shuffle=False, drop_last=True,
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=True,
                               pin_memory=True)
     return data_loader
 
