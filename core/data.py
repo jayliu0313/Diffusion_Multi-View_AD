@@ -17,14 +17,14 @@ def eyecandies_classes():
     return [
         'CandyCane',
         'ChocolateCookie',
-        'ChocolatePraline',
-        'Confetto',
+        # 'ChocolatePraline',
+        # 'Confetto',
         'GummyBear',
-        'HazelnutTruffle',
-        'LicoriceSandwich',
-        'Lollipop',
-        'Marshmallow',
-        'PeppermintCandy',   
+        # 'HazelnutTruffle',
+        # 'LicoriceSandwich',
+        # 'Lollipop',
+        # 'Marshmallow',
+        # 'PeppermintCandy',   
     ]
 
 def mvtec3d_classes():
@@ -229,10 +229,12 @@ class TrainLightings(Dataset):
         # noise_images = []
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
+            if not img.mode == "RGB":
+                img = img.convert("RGB")
             img = self.rgb_transform(img) 
             images.append(img)
         images = torch.stack(images)
-        images = images*2.0 - 1.0
+        # images = images*2.0 - 1.0
         
         normal_path = img_path[1]
         depth_path = img_path[2]
@@ -298,7 +300,7 @@ class ValLightings(Dataset):
             images.append(img)
             # noise_images.append(noise_img)
         images = torch.stack(images)
-        images = images.float()*2 - 1
+        # images = images.float()*2 - 1
         # noise_images = torch.stack(noise_images)
         normal_path = img_path[1]
         depth_path = img_path[2]

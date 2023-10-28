@@ -93,8 +93,10 @@ class Rec(Base_Reconstruct):
         lightings = lightings.squeeze().to(self.device)
         # print(lightings.min())
         # print(lightings.max())
-        out = self.rgb_model(lightings)
-        out = torch.clip(out, min=lightings.min(), max=lightings.max())
+    
+        out = self.rgb_model(lightings * 2 - 1)
+        out = (out + 1) / 2
+        # out = torch.clip(out, min=lightings.min(), max=lightings.max())
         # print(out.min())
         # print(out.max())
         if False:
@@ -120,8 +122,8 @@ class Rec(Base_Reconstruct):
                 final_map, _, img = self.compute_max_smap(score_maps, lightings)
             elif(self.score_type == 1):
                 final_map, _, img = self.compute_mean_smap(score_maps, lightings)
-            if item % 2 == 0:
-                display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
+            # if item % 2 == 0:
+            display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
         self.cls_rec_loss += loss.item()
         self.image_labels.append(label)
         self.image_preds.append(t2np(final_score))

@@ -3,10 +3,11 @@ import torch
 import torch.nn as nn
 from core.models.network_util import Decom_Block
 from diffusers import StableDiffusionPipeline, AutoencoderKL, DDIMScheduler
+from transformers import CLIPFeatureExtractor, CLIPTokenizer, CLIPProcessor, CLIPVisionModel
 from PIL import Image
 
 class Autoencoder(nn.Module):
-    def __init__(self, device, model_id="CompVis/stable-diffusion-v1-4"):
+    def __init__(self, device, model_id="stabilityai/sd-vae-ft-ema"):
         super(Autoencoder, self).__init__()
         
         # self.vae = AutoencoderKL.from_pretrained(model_id).to(device)
@@ -15,12 +16,17 @@ class Autoencoder(nn.Module):
         # scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
         # MY_TOKEN = ''
         self.device = device
-        self.vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae", torch_dtype=torch.float16).to(device)
-        self.decomp_block = Decom_Block(4).to(device).half()
-        # for param in self.vae.parameters():
-        #     param.requires_grad = False
+        self.vae = AutoencoderKL.from_pretrained(model_id).to(device)
+        self.vae.eval()
+        self.vae.requires_grad_(False)
+        for name, param in self.vae.named_parameters():
+            if 'decoder' in name:
+                param.requires_grad = True
+                
+        self.decomp_block = Decom_Block(4).to(device)
+
         # self.vae.eval()
-        self.vae.scheduler = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
+        # self.vae.scheduler = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler")
         # self.criteria = torch.nn.MSELoss()
     
     def rec_randrec_forward(self, image):
@@ -35,14 +41,14 @@ class Autoencoder(nn.Module):
         return out, rand_out
     
     def randrec_forward(self, image):
-        x = self.image2latent(image)
+        latents = self.image2latent(image)
         
         # normal reconstruction
         # feat = self.decomp_block(x)
         # out = self.latent2image(feat)
         # random change fc fu reconstruction for bottleneck
-        
-        rand_out = self.latent2image(x)
+        latents = self.decomp_block.prob_rand_forward(latents)
+        rand_out = self.latent2image(latents)
         return rand_out
     
     def forward(self, image):
@@ -52,18 +58,21 @@ class Autoencoder(nn.Module):
         return out
         
     def image2latent(self, image):
-        with torch.no_grad():
+        # with torch.no_grad():
             # image = torch.from_numpy(image).float() / 127.5 - 1
             # image = image.permute(2, 0, 1).unsqueeze(0).to(self.device)
-            latents = self.vae.encode(image).latent_dist.sample()
-            latents = latents * 0.18215
+        latents = self.vae.encode(image).latent_dist.sample()
+        latents = latents * 0.18215
         return latents
 
     def latent2image(self, latents):
         latents = 1 / 0.18215 * latents
-        # rand_latents = self.decomp_block.rand_forward(latents)
         image = self.vae.decode(latents).sample
-        return image
+        return image.clamp(-1, 1)
+    
+    def freeze_model(self):
+        for param in self.parameters():
+            param.requires_grad = False
     
 # class Autoencoder(nn.Module):
 #     def __init__(self, device, latent_dim=256):

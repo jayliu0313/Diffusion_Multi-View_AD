@@ -34,13 +34,13 @@ class Decom_Block(nn.Module):
             mid_ch = ch
         self.fc_conv = conv3x3(ch, mid_ch)
         self.fu_conv = conv3x3(ch, mid_ch)
-        self.relu = nn.ReLU(inplace=True)
+        self.activate = nn.SELU()
         self.fuse_conv = conv3x3(mid_ch, ch)
         
     def forward(self, x):
         fc = self.fc_conv(x)
         fu = self.fu_conv(x)
-        x = self.relu(self.fuse_conv(fc+fu))
+        x = self.activate(self.fuse_conv(fc+fu))
         return x
     
     def rand_forward(self, x):
@@ -60,7 +60,28 @@ class Decom_Block(nn.Module):
         fu = fu[random_indices, :, :, :]
         fu = fu.reshape(-1, C, H, W)
 
-        x = self.relu(self.fuse_conv(fc+fu))
+        x = self.activate(self.fuse_conv(fc+fu))
+        return x
+    
+    def prob_rand_forward(self, x, prob=0.5):
+        fc = self.fc_conv(x)
+        fu = self.fu_conv(x)
+        
+        if random.uniform(0, 1) <= prob:
+            _, C, H ,W = fc.size()
+            fc = fc.reshape(-1, 6, C, H, W)
+            random_indices = torch.randperm(6)
+            fc = fc[:, random_indices, :, :]
+            fc = fc.reshape(-1, C, H, W)
+            
+            _, C, H ,W = fu.size()
+            fu = fu.reshape(-1, 6, C, H, W)
+            B = fu.shape[0]
+            random_indices = torch.randperm(B)
+            fu = fu[random_indices, :, :, :]
+            fu = fu.reshape(-1, C, H, W)
+
+        x = self.activate(self.fuse_conv(fc+fu))
         return x
     
     def get_fc(self, x):
@@ -79,7 +100,7 @@ class Decom_Block(nn.Module):
         return fu
     
     def fuse_both(self, fc, fu):
-        return self.relu(self.fuse_conv(fc + fu))
+        return self.activate(self.fuse_conv(fc + fu))
     
 class BasicBlock(nn.Module):
     def __init__(

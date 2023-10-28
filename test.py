@@ -12,7 +12,7 @@ parser = argparse.ArgumentParser(description='test')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
 parser.add_argument('--method_name', default="rec", help="rgb_nmap_rec, mean_rec, rec, nmap_repair, nmap_rec, memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
-parser.add_argument('--rgb_ckpt_path', default="checkpoints/rgb_checkpoints/ResnetDecomBottleneck_wonoise_allcls/best_ckpt.pth")
+parser.add_argument('--rgb_ckpt_path', default="checkpoints/rgb_checkpoints/autoencoder/best_ckpt.pth")
 parser.add_argument('--nmap_ckpt_path', default=None)
 
 parser.add_argument('--output_dir', default="./output")
@@ -42,7 +42,7 @@ def run_eyecandies(args):
         # 'Confetto',
         'GummyBear',
         # 'HazelnutTruffle',
-        'LicoriceSandwich',
+        # 'LicoriceSandwich',
         # 'Lollipop',
         # 'Marshmallow',
         # 'PeppermintCandy'

@@ -16,14 +16,14 @@ parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
 parser.add_argument('--ckpt_path', default="checkpoints/rgb_checkpoints/autoencoder")
 parser.add_argument("--load_ckpt", default=None)
-parser.add_argument('--batch_size', default=4, type=int)
+parser.add_argument('--batch_size', default=2, type=int)
 parser.add_argument('--image_size', default=256, type=int)
 
 # Training Setup
 parser.add_argument("--rand_weight", default=0.3, type=float)
 parser.add_argument("--training_mode", default="fuse_fc", help="traing type: mean, fuse_fc, fuse_both, random_both")
 parser.add_argument("--model", default="Masked_Conv", help="traing type: Conv, Conv_Ins, Masked_Conv")
-parser.add_argument("--learning_rate", default=2e-7)
+parser.add_argument("--learning_rate", default=1e-4)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=8)
 parser.add_argument("--epochs", default=1000)
@@ -446,7 +446,8 @@ class Rec_RandRec_Bottleneck(Train_Base):
             
             for lightings, _ in tqdm(data_loader, desc=f'Training Epoch: {self.epoch}'):
                 self.optimizer.zero_grad()
-                lightings = lightings.half().to(device)
+                
+                lightings = lightings.to(device)
                 lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
                 # rec, rand_rec = self.model.rec_randrec_forward(lightings)
                 rand_rec = self.model.randrec_forward(lightings)
@@ -460,10 +461,12 @@ class Rec_RandRec_Bottleneck(Train_Base):
                 
                 # loss = (1-self.rand_weight) * loss_rec + self.rand_weight * loss_rand_rec #+  loss_fc * 0.1 + loss_fu * 0.1
                 loss = loss_rand_rec
-                print(loss)
+                # print(loss)
+                
                 loss.backward()
-              
+                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 self.optimizer.step()
+                
                 # epoch_loss_rec += loss_rec.item()
                 epoch_loss_rand_rec += loss_rand_rec.item()
                 # epoch_loss_fc += loss_fc.item()
@@ -485,7 +488,7 @@ class Rec_RandRec_Bottleneck(Train_Base):
                 epoch_val_loss_fu = 0.0
                 with torch.no_grad():
                     for lightings, _ in val_loader:
-                        lightings = lightings.half().to(device)
+                        lightings = lightings.to(device)
                         lightings = lightings.reshape(-1, 3, args.image_size, args.image_size)
                         rand_rec = self.model.randrec_forward(lightings)
                     

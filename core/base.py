@@ -11,7 +11,7 @@ from core.models.rgb_network import *
 from core.models.nmap_network import NMap_AE
 from core.models.backnone import RGB_Extractor
 from core.models.unet_model import UNet_Decom, ResUNet_Decom_AE
-
+from core.models.autoencoder import Autoencoder
 
 class Base_Method():
     def __init__(self, args, cls_path):
@@ -52,7 +52,7 @@ class Base_Method():
             self.nmap_model.freeze_model()
         if rgb_ckpt_path != None:
             print("Load the checkpoint of rgb model...")
-            self.rgb_model = ResNetAE_Decom_Bottleneck(self.device)
+            self.rgb_model = Autoencoder(self.device)
             self.rgb_model.to(self.device)
             self.rgb_model.eval()
             checkpoint = torch.load(rgb_ckpt_path, map_location=self.device)
