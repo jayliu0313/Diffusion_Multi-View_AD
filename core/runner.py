@@ -1,5 +1,6 @@
 from core.data import test_lightings_loader
-from core.reconstruct_method import Mean_Rec, Rec, Nmap_Repair, Nmap_Rec, RGB_Nmap_Rec
+from core.reconstruct_method import Nmap_Repair, Nmap_Rec, RGB_Nmap_Rec, Vae_Rec #,Mean_Rec, Rec, 
+from core.diffuision_method import Diffusion_Method
 from core.memory_method import Memory_Method
 from tqdm import tqdm
 import torch
@@ -15,16 +16,18 @@ class Runner():
         self.args = args
         if args.method_name == "rgb_nmap_rec":
             self.method = RGB_Nmap_Rec(args, cls_path)
-        elif args.method_name == "mean_rec":
-            self.method = Mean_Rec(args, cls_path)
-        elif args.method_name == "rec":
-            self.method = Rec(args, cls_path)
         elif args.method_name == "nmap_repair":
             self.method = Nmap_Repair(args, cls_path)
         elif args.method_name == "nmap_rec":
             self.method = Nmap_Rec(args, cls_path)
         elif args.method_name == "memory":
             self.method = Memory_Method(args, cls_path)
+        elif args.method_name == "vae_rec":
+            self.method = Vae_Rec(args, cls_path)
+        # elif args.method_name == "mean_rec":
+        #     self.method = Mean_Rec(args, cls_path)
+        # elif args.method_name == "rec":
+        #     self.method = Rec(args, cls_path)
         else:
             return TypeError
         self.cls = cls

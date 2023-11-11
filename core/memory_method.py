@@ -5,6 +5,9 @@ from utils.utils import t2np
 from sklearn import random_projection
 from utils.utils import KNNGaussianBlur
 
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD = [0.229, 0.224, 0.225]
+
 class Memory_Method(Base_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)

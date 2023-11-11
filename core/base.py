@@ -16,7 +16,7 @@ from core.models.autoencoder import Autoencoder
 class Base_Method():
     def __init__(self, args, cls_path):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.load_model(args.rgb_ckpt_path, args.nmap_ckpt_path)
+        # self.load_model(args.rgb_ckpt_path, args.nmap_ckpt_path)
         self.initialize_score()
         
         # self.transform = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
@@ -41,23 +41,23 @@ class Base_Method():
         if not os.path.exists(self.reconstruct_path):
             os.makedirs(self.reconstruct_path)
 
-    def load_model(self, rgb_ckpt_path=None, nmap_ckpt_path=None):
-        if nmap_ckpt_path != None:
-            print("Load the checkpoint of normal map model...")
-            self.nmap_model = NMap_AE(self.device)
-            self.nmap_model.to(self.device)
-            self.nmap_model.eval()
-            checkpoint = torch.load(nmap_ckpt_path, map_location=self.device)
-            self.nmap_model.load_state_dict(checkpoint['model'])
-            self.nmap_model.freeze_model()
-        if rgb_ckpt_path != None:
-            print("Load the checkpoint of rgb model...")
-            self.rgb_model = Autoencoder(self.device)
-            self.rgb_model.to(self.device)
-            self.rgb_model.eval()
-            checkpoint = torch.load(rgb_ckpt_path, map_location=self.device)
-            self.rgb_model.load_state_dict(checkpoint['model'])
-            self.rgb_model.freeze_model()
+    # def load_model(self, rgb_ckpt_path=None, nmap_ckpt_path=None):
+    #     if nmap_ckpt_path != None:
+    #         print("Load the checkpoint of normal map model...")
+    #         self.nmap_model = NMap_AE(self.device)
+    #         self.nmap_model.to(self.device)
+    #         self.nmap_model.eval()
+    #         checkpoint = torch.load(nmap_ckpt_path, map_location=self.device)
+    #         self.nmap_model.load_state_dict(checkpoint['model'])
+    #         self.nmap_model.freeze_model()
+    #     if rgb_ckpt_path != None:
+    #         print("Load the checkpoint of rgb model...")
+    #         self.rgb_model = Autoencoder(self.device)
+    #         self.rgb_model.to(self.device)
+    #         self.rgb_model.eval()
+    #         checkpoint = torch.load(rgb_ckpt_path, map_location=self.device)
+    #         self.rgb_model.load_state_dict(checkpoint['model'])
+    #         self.rgb_model.freeze_model()
 
     def initialize_score(self):
         self.image_list = list()

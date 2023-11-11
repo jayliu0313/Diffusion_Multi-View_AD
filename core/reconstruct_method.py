@@ -1,16 +1,46 @@
 import torch
 import numpy as np
 from core.base import Base_Method
+from core.models.network_util import Decom_Block
 from utils.visualize_util import display_one_img, display_image, display_mean_fusion
 from utils.utils import t2np
 from patchify import patchify
+from diffusers import AutoencoderKL
 
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD = [0.229, 0.224, 0.225]
-
-class Base_Reconstruct(Base_Method):
+class Reconstruct_Method(Base_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
+        # Load vae model
+        self.vae = AutoencoderKL.from_pretrained(
+                    args.diffusion_id,
+                    subfolder="vae",
+                    revision=args.revision,
+                    torch_dtype=torch.float32
+                ).to(self.device)
+        self.decomp_block = Decom_Block(4).to(self.device)
+        
+        # Load checkpoint  
+        self.load_ckpt(args.load_vae_ckpt, args.load_decom_ckpt)
+        self.vae.requires_grad_(False)
+        self.decomp_block.requires_grad_(False)
+        
+    def load_ckpt(self, vae_ckpt, decomp_ckpt):
+        if vae_ckpt is not None:
+            self.vae.load_state_dict(torch.load(vae_ckpt, map_location=self.device))
+        if decomp_ckpt is not None:
+            self.decomp_block.load_state_dict(torch.load(decomp_ckpt, map_location=self.device))
+            
+    def image2latents(self, x):
+        x = x * 2.0 - 1.0
+        latents = self.vae.encode(x).latent_dist.sample()
+        latents = latents * 0.18215
+        return latents
+    
+    def latents2image(self, latents):
+        latents = 1 / 0.18215 * latents
+        image = self.vae.decode(latents).sample
+        image = (image / 2 + 0.5).clamp(0, 1)
+        return image       
     
     def get_pretrained_feature(self, x):
         rgb_feature_maps = self.rgb_model.get_layer_feature(x)
@@ -56,83 +86,7 @@ class Base_Reconstruct(Base_Method):
         final_score = torch.mean(topk_score)
         return final_map, final_score, img
     
-# test method 1: mean fc to reconstruct each image
-class Mean_Rec(Base_Reconstruct):
-    def __init__(self, args, cls_path):
-        super().__init__(args, cls_path)
-    
-    def predict(self, item, lightings, _, gt, label):
-        lightings = lightings.squeeze().to(self.device)
-        out =  self.rgb_model.mean_rec(lightings)
-        loss = self.criteria(lightings, out)
-        self.cls_rec_loss += loss.item()
-
-        score_maps = torch.sum(torch.abs(lightings - out), dim=1)
-        score_maps = score_maps.unsqueeze(1)
-
-        if(self.score_type == 0):
-            final_map, final_score, img = self.compute_max_smap(score_maps, lightings)
-        elif(self.score_type == 1):
-            final_map, final_score, img = self.compute_mean_smap(score_maps, lightings)
-        
-        self.image_labels.append(label.numpy())
-        self.image_preds.append(t2np(final_score))
-        self.image_list.append(t2np(img))
-        self.pixel_preds.append(t2np(final_map))
-        self.pixel_labels.extend(t2np(gt))
-
-       
-        # display_mean_fusion(t2np(lightings), t2np(out), self.reconstruct_path, item)
-
-# test method 2: reconstruct each image (using individual fc and fu)
-class Rec(Base_Reconstruct):
-    def __init__(self, args, cls_path):
-        super().__init__(args, cls_path)
-    
-    def predict(self, item, lightings, _, gt, label):
-        lightings = lightings.squeeze().to(self.device)
-        # print(lightings.min())
-        # print(lightings.max())
-    
-        out = self.rgb_model(lightings * 2 - 1)
-        out = (out + 1) / 2
-        # out = torch.clip(out, min=lightings.min(), max=lightings.max())
-        # print(out.min())
-        # print(out.max())
-        if False:
-            # img_avg = torch.nn.AvgPool2d(3, stride=1, padding=1)
-            # imgnet_in = img_avg(lightings)
-            # imgnet_out = img_avg(out)
-    
-            in_feat = self.get_pretrained_feature(lightings)
-            repaired_feat = self.get_pretrained_feature(out)
-            final_map, final_score = self.compute_feature_dist(in_feat, repaired_feat)
-            out_avg = self.average(out)
-            lightings_avg = self.average(lightings)
-            loss = self.criteria(lightings_avg, out_avg)
-        else:
-            img_avg = torch.nn.AvgPool2d(3, stride=1, padding=1)
-            out = img_avg(out)
-            lightings = img_avg(lightings)
-            loss = self.criteria(lightings, out)
-            score_maps = torch.sum(torch.abs(lightings - out), dim=1)
-            score_maps = score_maps.unsqueeze(1)
-            final_score = self.compute_score(score_maps)
-            if(self.score_type == 0):
-                final_map, _, img = self.compute_max_smap(score_maps, lightings)
-            elif(self.score_type == 1):
-                final_map, _, img = self.compute_mean_smap(score_maps, lightings)
-            # if item % 2 == 0:
-            display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
-        self.cls_rec_loss += loss.item()
-        self.image_labels.append(label)
-        self.image_preds.append(t2np(final_score))
-        self.image_list.append(t2np(lightings[5, :, :, :]))
-        self.pixel_preds.append(t2np(final_map))
-        self.pixel_labels.extend(t2np(gt))
-
-# normal map reconstruction
-class Nmap_Rec(Base_Reconstruct):
+class Nmap_Rec(Reconstruct_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
     
@@ -157,8 +111,7 @@ class Nmap_Rec(Base_Reconstruct):
         # if item % 5 == 0:
         display_one_img(t2np(normal.squeeze()), t2np(out.squeeze()), self.reconstruct_path, item)
 
-# test method 5: normal map and image reconstruction
-class RGB_Nmap_Rec(Base_Reconstruct):
+class RGB_Nmap_Rec(Reconstruct_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
     
@@ -200,7 +153,7 @@ class RGB_Nmap_Rec(Base_Reconstruct):
         if item % 5 == 0:
             display_image(t2np(lightings), t2np(rgb_out), self.reconstruct_path, item)
 
-class Nmap_Repair(Base_Reconstruct):
+class Nmap_Repair(Reconstruct_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
         
@@ -224,3 +177,129 @@ class Nmap_Repair(Base_Reconstruct):
         self.pixel_labels.extend(t2np(gt))
         if item % 5 == 0:
             display_one_img(t2np(nmap.squeeze()), t2np(rec.squeeze()), self.reconstruct_path, item)
+
+class Vae_Rec(Reconstruct_Method):
+    def __init__(self, args, cls_path):
+        super().__init__(args, cls_path)
+                
+    def predict(self, item, lightings, _, gt, label):
+        lightings = lightings.squeeze().to(self.device)
+        
+        latents = self.image2latents(lightings)
+        # mean fc reconstruction
+        mean_fc = self.decomp_block.get_meanfc(latents)
+        fu = self.decomp_block.get_fu(latents)
+        latents = self.decomp_block.fuse_both(mean_fc, fu)
+        # print(latents.shape)
+        # own fc reconstruction
+        # latents = self.decomp_block(latents)
+        out = self.latents2image(latents)
+
+        # print(out.min())
+        # print(out.max())
+        if False:
+            # img_avg = torch.nn.AvgPool2d(3, stride=1, padding=1)
+            # imgnet_in = img_avg(lightings)
+            # imgnet_out = img_avg(out)
+    
+            in_feat = self.get_pretrained_feature(lightings)
+            repaired_feat = self.get_pretrained_feature(out)
+            final_map, final_score = self.compute_feature_dist(in_feat, repaired_feat)
+            out_avg = self.average(out)
+            lightings_avg = self.average(lightings)
+            loss = self.criteria(lightings_avg, out_avg)
+        else:
+            img_avg = torch.nn.AvgPool2d(3, stride=1, padding=1)
+            out = img_avg(out)
+            lightings = img_avg(lightings)
+            loss = self.criteria(lightings, out)
+            score_maps = torch.sum(torch.abs(lightings - out), dim=1)
+            score_maps = score_maps.unsqueeze(1)
+            final_score = self.compute_score(score_maps)
+            if(self.score_type == 0):
+                final_map, _, img = self.compute_max_smap(score_maps, lightings)
+            elif(self.score_type == 1):
+                final_map, _, img = self.compute_mean_smap(score_maps, lightings)
+            # if item % 2 == 0:
+            display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
+            
+        self.cls_rec_loss += loss.item()
+        self.image_labels.append(label)
+        self.image_preds.append(t2np(final_score))
+        self.image_list.append(t2np(lightings[5, :, :, :]))
+        self.pixel_preds.append(t2np(final_map))
+        self.pixel_labels.extend(t2np(gt))
+
+
+# class Mean_Rec(Reconstruct_Method):
+#     def __init__(self, args, cls_path):
+#         super().__init__(args, cls_path)
+    
+#     def predict(self, item, lightings, _, gt, label):
+#         lightings = lightings.squeeze().to(self.device)
+#         out =  self.rgb_model.mean_rec(lightings)
+#         loss = self.criteria(lightings, out)
+#         self.cls_rec_loss += loss.item()
+
+#         score_maps = torch.sum(torch.abs(lightings - out), dim=1)
+#         score_maps = score_maps.unsqueeze(1)
+
+#         if(self.score_type == 0):
+#             final_map, final_score, img = self.compute_max_smap(score_maps, lightings)
+#         elif(self.score_type == 1):
+#             final_map, final_score, img = self.compute_mean_smap(score_maps, lightings)
+        
+#         self.image_labels.append(label.numpy())
+#         self.image_preds.append(t2np(final_score))
+#         self.image_list.append(t2np(img))
+#         self.pixel_preds.append(t2np(final_map))
+#         self.pixel_labels.extend(t2np(gt))
+
+       
+#         # display_mean_fusion(t2np(lightings), t2np(out), self.reconstruct_path, item)
+
+# class Rec(Reconstruct_Method):
+#     def __init__(self, args, cls_path):
+#         super().__init__(args, cls_path)
+    
+#     def predict(self, item, lightings, _, gt, label):
+#         lightings = lightings.squeeze().to(self.device)
+#         # print(lightings.min())
+#         # print(lightings.max())
+    
+#         out = self.rgb_model(lightings)
+#         out = (out + 1) / 2
+#         # out = torch.clip(out, min=lightings.min(), max=lightings.max())
+#         # print(out.min())
+#         # print(out.max())
+#         if False:
+#             # img_avg = torch.nn.AvgPool2d(3, stride=1, padding=1)
+#             # imgnet_in = img_avg(lightings)
+#             # imgnet_out = img_avg(out)
+    
+#             in_feat = self.get_pretrained_feature(lightings)
+#             repaired_feat = self.get_pretrained_feature(out)
+#             final_map, final_score = self.compute_feature_dist(in_feat, repaired_feat)
+#             out_avg = self.average(out)
+#             lightings_avg = self.average(lightings)
+#             loss = self.criteria(lightings_avg, out_avg)
+#         else:
+#             img_avg = torch.nn.AvgPool2d(3, stride=1, padding=1)
+#             out = img_avg(out)
+#             lightings = img_avg(lightings)
+#             loss = self.criteria(lightings, out)
+#             score_maps = torch.sum(torch.abs(lightings - out), dim=1)
+#             score_maps = score_maps.unsqueeze(1)
+#             final_score = self.compute_score(score_maps)
+#             if(self.score_type == 0):
+#                 final_map, _, img = self.compute_max_smap(score_maps, lightings)
+#             elif(self.score_type == 1):
+#                 final_map, _, img = self.compute_mean_smap(score_maps, lightings)
+#             # if item % 2 == 0:
+#             display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
+#         self.cls_rec_loss += loss.item()
+#         self.image_labels.append(label)
+#         self.image_preds.append(t2np(final_score))
+#         self.image_list.append(t2np(lightings[5, :, :, :]))
+#         self.pixel_preds.append(t2np(final_map))
+#         self.pixel_labels.extend(t2np(gt))

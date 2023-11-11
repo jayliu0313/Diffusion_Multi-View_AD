@@ -300,7 +300,6 @@ class ValLightings(Dataset):
             images.append(img)
             # noise_images.append(noise_img)
         images = torch.stack(images)
-        # images = images.float()*2 - 1
         # noise_images = torch.stack(noise_images)
         normal_path = img_path[1]
         depth_path = img_path[2]
