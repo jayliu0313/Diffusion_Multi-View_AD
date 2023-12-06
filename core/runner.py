@@ -1,6 +1,6 @@
 from core.data import test_lightings_loader
-from core.reconstruct_method import Nmap_Repair, Nmap_Rec, RGB_Nmap_Rec, Vae_Rec #,Mean_Rec, Rec, 
-from core.diffuision_method import Diffusion_Method
+from core.reconstruct_method import Nmap_Repair, Nmap_Rec, RGB_Nmap_Rec, Vae_Rec
+from core.diffuision_method import ControlNet_Rec, Diffusion_Rec, DDIM_Rec
 from core.memory_method import Memory_Method
 from tqdm import tqdm
 import torch
@@ -24,6 +24,12 @@ class Runner():
             self.method = Memory_Method(args, cls_path)
         elif args.method_name == "vae_rec":
             self.method = Vae_Rec(args, cls_path)
+        elif args.method_name == "controlnet_rec":
+            self.method = ControlNet_Rec(args, cls_path)
+        elif args.method_name == "diffusion_rec":
+            self.method = Diffusion_Rec(args, cls_path)
+        elif args.method_name == "DDIM_Method":
+            self.method = DDIM_Rec(args, cls_path)
         # elif args.method_name == "mean_rec":
         #     self.method = Mean_Rec(args, cls_path)
         # elif args.method_name == "rec":
@@ -38,6 +44,8 @@ class Runner():
         dataloader = test_lightings_loader(self.args, self.cls, "memory")
         with torch.no_grad():
             for i, (lightings, _) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
+                # if i == 5:
+                #     break
                 self.method.add_sample_to_mem_bank(lightings)
       
         self.method.run_coreset()
@@ -46,6 +54,8 @@ class Runner():
         dataloader = test_lightings_loader(self.args, self.cls, "test")
         with torch.no_grad():
             for i, ((images, nmap), gt, label) in enumerate(tqdm(dataloader)):
+                # if i == 5:
+                #     break
                 self.method.predict(i, images, nmap, gt, label)
 
         image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics()

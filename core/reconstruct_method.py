@@ -1,59 +1,57 @@
 import torch
+import torch.nn.functional as F
 import numpy as np
+
+from diffusers import AutoencoderKL
 from core.base import Base_Method
-from core.models.network_util import Decom_Block
+from kornia.filters import gaussian_blur2d
 from utils.visualize_util import display_one_img, display_image, display_mean_fusion
 from utils.utils import t2np
 from patchify import patchify
-from diffusers import AutoencoderKL
+
 
 class Reconstruct_Method(Base_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
-        # Load vae model
+        
         self.vae = AutoencoderKL.from_pretrained(
-                    args.diffusion_id,
-                    subfolder="vae",
-                    revision=args.revision,
-                    torch_dtype=torch.float32
-                ).to(self.device)
-        self.decomp_block = Decom_Block(4).to(self.device)
-        
-        # Load checkpoint  
-        self.load_ckpt(args.load_vae_ckpt, args.load_decom_ckpt)
+            args.diffusion_id,
+            subfolder="vae",
+            revision=args.revision,
+            torch_dtype=torch.float32
+        ).to(self.device)
+        if args.load_vae_ckpt is not None:
+            checkpoint_dict = torch.load(args.load_vae_ckpt, map_location=self.device)
+            ## Load VAE checkpoint  
+            if checkpoint_dict['vae'] is not None:
+                print("load vae checkpoints!")
+                self.vae.load_state_dict(checkpoint_dict['vae'])
+                
         self.vae.requires_grad_(False)
-        self.decomp_block.requires_grad_(False)
-        
-    def load_ckpt(self, vae_ckpt, decomp_ckpt):
-        if vae_ckpt is not None:
-            self.vae.load_state_dict(torch.load(vae_ckpt, map_location=self.device))
-        if decomp_ckpt is not None:
-            self.decomp_block.load_state_dict(torch.load(decomp_ckpt, map_location=self.device))
             
-    def image2latents(self, x):
-        x = x * 2.0 - 1.0
-        latents = self.vae.encode(x).latent_dist.sample()
-        latents = latents * 0.18215
-        return latents
-    
-    def latents2image(self, latents):
-        latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents).sample
-        image = (image / 2 + 0.5).clamp(0, 1)
-        return image       
-    
-    def get_pretrained_feature(self, x):
-        rgb_feature_maps = self.rgb_model.get_layer_feature(x)
+        
+    def get_rgb_feature(self, image):
+        image = self.image_transform(image)
+        rgb_feature_maps = self.feature_extractor(image)
         rgb_resized_maps = [self.resize(self.average(fmap)) for fmap in rgb_feature_maps]
         rgb_patch = torch.cat(rgb_resized_maps, 1)
         return rgb_patch
         
-    def compute_feature_dist(self, feat1, feat2):
+    def compute_feature_dist(self, target, reconstruct_img):
+        feat1 = self.get_rgb_feature(target)
+        feat2 = self.get_rgb_feature(reconstruct_img)
+        
         feat1 = feat1.permute(0, 2, 3, 1)
         feat2 = feat2.permute(0, 2, 3, 1)
         s_map_size28 = self.pdist(feat1, feat2)
-        s_map_size28 = torch.mean(s_map_size28, dim=0)
-        s = torch.max(s_map_size28)
+        if self.score_type == 0:
+            s_map_size28 = torch.mean(s_map_size28, dim=0)
+            s = torch.max(s_map_size28)
+        else:
+            s_map_size28, idx = torch.max(s_map_size28, dim=0)
+            # print(s_map_size28.shape)
+            s = s_map_size28[idx]
+        # print(s_map_size28.shape)
         s_map_size28 = s_map_size28.view(1, 1, 28, 28)
         s_map_size_img = torch.nn.functional.interpolate(s_map_size28, size=(self.image_size, self.image_size), mode='bilinear', align_corners=False)
         return s_map_size_img.to('cpu'), s.to('cpu')
@@ -71,7 +69,7 @@ class Reconstruct_Method(Base_Method):
         return final_score
 
     def compute_max_smap(self, score_maps, lightings):
-        final_map = torch.zeros((1, self.image_size, self.image_size))
+        # final_map = torch.zeros((1, self.image_size, self.image_size))
         img = torch.zeros((3, self.image_size, self.image_size))
         final_map, _ = torch.max(score_maps, 0)
         topk_score, _ = torch.topk(final_map.flatten(), 25)
@@ -187,9 +185,9 @@ class Vae_Rec(Reconstruct_Method):
         
         latents = self.image2latents(lightings)
         # mean fc reconstruction
-        mean_fc = self.decomp_block.get_meanfc(latents)
-        fu = self.decomp_block.get_fu(latents)
-        latents = self.decomp_block.fuse_both(mean_fc, fu)
+        # mean_fc = self.decomp_block.get_meanfc(latents)
+        # fu = self.decomp_block.get_fu(latents)
+        # latents = self.decomp_block.fuse_both(mean_fc, fu)
         # print(latents.shape)
         # own fc reconstruction
         # latents = self.decomp_block(latents)
@@ -202,8 +200,6 @@ class Vae_Rec(Reconstruct_Method):
             # imgnet_in = img_avg(lightings)
             # imgnet_out = img_avg(out)
     
-            in_feat = self.get_pretrained_feature(lightings)
-            repaired_feat = self.get_pretrained_feature(out)
             final_map, final_score = self.compute_feature_dist(in_feat, repaired_feat)
             out_avg = self.average(out)
             lightings_avg = self.average(lightings)
@@ -221,7 +217,7 @@ class Vae_Rec(Reconstruct_Method):
             elif(self.score_type == 1):
                 final_map, _, img = self.compute_mean_smap(score_maps, lightings)
             # if item % 2 == 0:
-            display_image(t2np(lightings), t2np(out), self.reconstruct_path, item)
+            display_image(lightings, out, self.reconstruct_path, item)
             
         self.cls_rec_loss += loss.item()
         self.image_labels.append(label)

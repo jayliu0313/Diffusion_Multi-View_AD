@@ -5,6 +5,7 @@ from sklearn.metrics import roc_auc_score, precision_recall_curve
 from skimage import morphology
 from skimage.segmentation import mark_boundaries
 from tqdm import tqdm
+from utils.utils import t2np
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -202,28 +203,72 @@ def visualize_smap_distribute(score_map, gt_map, image_size=224):
     #     plt.close()
 
 def display_image(images, reconstruct_imgs, cls_path, item):
+    images = images.permute(0, 2, 3, 1)
+    images = t2np(images)
+    reconstruct_imgs = reconstruct_imgs.permute(0, 2, 3, 1)
+    reconstruct_imgs = t2np(reconstruct_imgs)
     save_path = os.path.join(cls_path, str(item) +".png")
     image_size = images.shape[2] 
     fig = plt.figure(figsize=(12, 5))
     nrows = 2
     ncols = 6
     for i in range(6): 
-        img = denormalization(images[i, :, :, :].reshape(-1,  image_size, image_size))
+        img = images[i, :, :, :].reshape(image_size, image_size, 3)
         fig.add_subplot(nrows, ncols, i + 1)
         plt.imshow(img, cmap='gray')
         plt.axis("off")
         if(i == 2):
-            plt.title('Unique Testing Image', fontsize = 15)
+            plt.title('Lighting Image', fontsize = 15)
 
-        target = denormalization(reconstruct_imgs[i, :, :, :].reshape(-1,  image_size, image_size))
+        target = reconstruct_imgs[i, :, :, :].reshape(image_size, image_size, 3)
         fig.add_subplot(nrows, ncols, 7 + i)
         plt.imshow(target, cmap='gray')
         plt.axis("off")
         if(i == 2):
-            plt.title('Reconstruct Testing Image', fontsize = 15)
+            plt.title('Reconstruct Image', fontsize = 15)
     
     
-    plt.savefig(save_path)
+    plt.savefig(save_path, dpi=300)
+    plt.close()
+    
+def display_3type_image(images, reconstruct_imgs, augment_img, cls_path, item):
+    images = images.permute(0, 2, 3, 1)
+    images = t2np(images)
+    
+    reconstruct_imgs = reconstruct_imgs.permute(0, 2, 3, 1)
+    reconstruct_imgs = t2np(reconstruct_imgs)
+    
+    augment_img = augment_img.permute(0, 2, 3, 1)
+    augment_img = t2np(augment_img)
+    
+    save_path = os.path.join(cls_path, str(item) +".png")
+    image_size = images.shape[2] 
+    fig = plt.figure(figsize=(12, 5))
+    nrows = 3
+    ncols = 6
+    for i in range(6): 
+        img = images[i, :, :, :].reshape(image_size, image_size, 3)
+        fig.add_subplot(nrows, ncols, i + 1)
+        plt.imshow(img, cmap='gray')
+        plt.axis("off")
+        if(i == 2):
+            plt.title('Lighting Image', fontsize = 15)
+
+        target = reconstruct_imgs[i, :, :, :].reshape(image_size, image_size, 3)
+        fig.add_subplot(nrows, ncols, 7 + i)
+        plt.imshow(target, cmap='gray')
+        plt.axis("off")
+        if(i == 2):
+            plt.title('Reconstruct Image', fontsize = 15)
+            
+        aug = augment_img[i, :, :, :].reshape(image_size, image_size, 3)
+        fig.add_subplot(nrows, ncols, 13 + i)
+        plt.imshow(aug, cmap='gray')
+        plt.axis("off")
+        if(i == 2):
+            plt.title('Augment Image', fontsize = 15)
+            
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
 def display_mean_fusion(images, reconsturct_imgs, cls_path, item):
@@ -247,7 +292,7 @@ def display_mean_fusion(images, reconsturct_imgs, cls_path, item):
         if(i == 2):
             plt.title('Reconstruct Testing Image', fontsize = 15)
     
-    plt.savefig(save_path)
+    plt.savefig(save_path, dpi=300)
     plt.close()   
     
 def display_one_img(img, rec, cls_path, item):
@@ -266,7 +311,7 @@ def display_one_img(img, rec, cls_path, item):
     plt.axis("off")
     plt.title('Reconstruct Testing Image', fontsize = 15)
 
-    plt.savefig(save_path)
+    plt.savefig(save_path, dpi=300)
     plt.close()
 
 

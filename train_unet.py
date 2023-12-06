@@ -1,243 +1,266 @@
-import torch
-import torch.nn as nn
-import argparse
 import os
 import os.path as osp
-import math
-import itertools
+import argparse
+import torch
+import torch.nn as nn
 from tqdm import tqdm
-
-from core.models.adapter import Adapter
+import numpy as np
 from core.data import train_lightings_loader, val_lightings_loader
 
 import torch.nn.functional as F
-from torch.cuda.amp import autocast, GradScaler
-from transformers import CLIPProcessor, CLIPVisionModel
-from diffusers.optimization import get_scheduler
+from transformers import CLIPTextModel, AutoTokenizer
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
-# from diffusers import StableDiffusionImg2ImgPipeline
+from diffusers.optimization import get_scheduler
+from core.models.controllora import ControlLoRAModel
+from core.models.autoencoder import Autoencoder
+from core.models.network_util import Decom_Block
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg') 
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/rgb_checkpoints/finetune_condition_diffusion_unet4")
-# parser.add_argument('--diffusion_id', default="CompVis/stable-diffusion-v1-4")
-parser.add_argument("--load_unet_ckpt", default=None)
-parser.add_argument("--load_adapter_ckpt", default=None)
-parser.add_argument('--batch_size', default=2, type=int)
+parser.add_argument('--ckpt_path', default="checkpoints/controlnet_model/")
+parser.add_argument("--load_vae_ckpt", default="/mnt/home_6T/public/jayliu0313/mil_test/checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_meanfcloss_probchangefcfu/best_vae_ckpt.pth")
+parser.add_argument("--load_decom_ckpt", default="/mnt/home_6T/public/jayliu0313/mil_test/checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_meanfcloss_probchangefcfu/best_decomp_ckpt.pth")
 parser.add_argument('--image_size', default=256, type=int)
-parser.add_argument('--val_every', default=3, type=int)
+parser.add_argument('--batch_size', default=2, type=int)
+parser.add_argument("--save_epoch", type=int, default=3)
+
+# Model Setup
+#parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
+parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
+parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
+parser.add_argument("--controlnet_id", type=str, default=None)
+parser.add_argument(
+        "--controllora_linear_rank",
+        type=int,
+        default=4,
+        help=("The dimension of the Linear Module LoRA update matrices."),
+    )
+parser.add_argument(
+        "--controllora_conv2d_rank",
+        type=int,
+        default=0,
+        help=("The dimension of the Conv2d Module LoRA update matrices."),
+    )
 
 # Training Setup
-parser.add_argument("--rand_weight", default=0.3, type=float)
-parser.add_argument("--training_mode", default="fuse_fc", help="traing type: mean, fuse_fc, fuse_both, random_both")
-parser.add_argument("--model", default="Masked_Conv", help="traing type: Conv, Conv_Ins, Masked_Conv")
 parser.add_argument("--learning_rate", default=5e-6)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
-parser.add_argument("--workers", default=8)
+parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
+parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
+parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
+parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
+parser.add_argument("--workers", default=6)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 parser.add_argument("--lr_scheduler", type=str, default="constant", help=('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'' "constant", "constant_with_warmup"]'),)
 parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
 parser.add_argument('--epoch', default=0, type=int, help="Which epoch to start training at")
 parser.add_argument("--num_train_epochs", type=int, default=1000)
-parser.add_argument(
-    "--lr_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler."
-)
-parser.add_argument(
-    "--max_train_steps",
-    type=int,
-    default=None,
-    help="Total number of training steps to perform.  If provided, overrides num_train_epochs.",
-)
-parser.add_argument("--save_steps", type=int, default=500, help="Save checkpoint every X updates steps.")
-parser.add_argument(
-    "--gradient_accumulation_steps",
-    type=int,
-    default=1,
-    help="Number of updates steps to accumulate before performing a backward/update pass.",
-)
-parser.add_argument(
-    "--gradient_checkpointing",
-    action="store_true",
-    help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
-)
+parser.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler.")
+parser.add_argument("--save_epoch", type=int, default=3)
 
-class Pipline():
-    def __init__(self, weight_dtype=torch.float32, clip_id="openai/clip-vit-base-patch32", diffusion_id="CompVis/stable-diffusion-v1-4", revision="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c"):
-        self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.dtype = weight_dtype
-        # self.weight_type = weight_type
-        # Load CLIP Image Encoder
-        self.clip_encoder = CLIPVisionModel.from_pretrained(clip_id).to(self.device, dtype=weight_dtype)
-        self.clip_encoder.requires_grad_(False)
-        self.clip_processor = CLIPProcessor.from_pretrained(clip_id)
 
-        self.adapter = Adapter().to(self.device)
-        # Load models and create wrapper for stable diffusion
+def export_loss(save_path, loss_list):
+    epoch_list = range(len(loss_list)) 
+    plt.rcParams.update({'font.size': 30})
+    plt.title('Training Loss Curve') # set the title of graph
+    plt.figure(figsize=(20, 15))
+    plt.plot(epoch_list, loss_list, color='b')
+    plt.xticks(np.arange(0, len(epoch_list)+1, 50))
+    plt.xlabel('Epoch') # set the title of x axis
+    plt.ylabel('Loss')
+    plt.savefig(save_path)
+    plt.clf()
+    plt.cla()
+    plt.close("all")
+
+
+class trainControlnet():
+    def __init__(self, args, device):
+
+        self.device = device
+        self.bs = args.batch_size
+        self.image_size = args.image_size
+        self.num_train_epochs = args.num_train_epochs
+        self.save_epoch = args.save_epoch
+        self.train_log_file = open(osp.join(args.ckpt_path, "training_log.txt"), "a", 1)
+        self.val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
+
+        # Load training and validation data
+        self.train_dataloader = train_lightings_loader(args)
+        self.val_dataloader = val_lightings_loader(args)
+
+        # Create Model
+        self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")
+        self.text_encoder = CLIPTextModel.from_pretrained(args.diffusion_id, subfolder="text_encoder")
+        self.noise_scheduler = DDPMScheduler.from_pretrained(args.diffusion_id, subfolder="scheduler")
+
+        # Load vae model
         self.vae = AutoencoderKL.from_pretrained(
-                    diffusion_id,
+                    args.diffusion_id,
                     subfolder="vae",
-                    revision=revision,
-                    torch_dtype=weight_dtype
-                ).to(self.device)
-        self.vae.requires_grad_(False)
-
+                    revision=args.revision,
+                    torch_dtype=torch.float32
+                )
+        # self.decomp_block = Decom_Block(4)
+        
         self.unet = UNet2DConditionModel.from_pretrained(
-            diffusion_id,
-            subfolder="unet",
-            revision=revision,
-            # torch_dtype=weight_dtype
-        ).to(self.device)
-        
-        self.noise_scheduler = DDPMScheduler.from_config(diffusion_id, subfolder="scheduler")
-        self.load_ckpt(args.load_unet_ckpt, args.load_adapter_ckpt)
-        print("current device:", self.device)
-        
-    def load_ckpt(self, unet_ckpt, adapter_ckpt):
-        if unet_ckpt is not None:
-            self.unet.load_state_dict(torch.load(unet_ckpt, map_location=self.device))
-            print("load unet ckpt from", unet_ckpt)
-        if adapter_ckpt is not None:
-            self.adapter.load_state_dict(torch.load(adapter_ckpt, map_location=self.device))
-            print("load adapter ckpt from", adapter_ckpt)
-             
-    def get_vae_latents(self, x):
-        x = x.float() * 2.0 - 1.0
+                args.diffusion_id,
+                subfolder="unet",
+                revision=args.revision)
+
+        self.vae.requires_grad_(False)
+        self.text_encoder.requires_grad_(False)
+        self.unet.requires_grad_(True)
+
+        self.vae.to(self.device)
+        self.unet.to(self.device)
+        self.text_encoder.to(self.device)
+
+        # Get CLIP embeddings
+        self.encoder_hidden_states = self.get_text_embedding([""], self.bs * 6) # [bs * 6, 77, 768]
+
+        # Optimizer creation
+        self.optimizer = torch.optim.AdamW(
+            self.unet.parameters(),
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+
+        self.lr_scheduler = get_scheduler(
+            args.lr_scheduler,
+            optimizer=self.optimizer,
+            num_warmup_steps=0,
+            num_training_steps=len(self.train_dataloader) * args.num_train_epochs,
+            num_cycles=1,
+            power=1.0,
+        )
+
+    def image2latents(self, x):
+        x = x * 2.0 - 1.0
         latents = self.vae.encode(x).latent_dist.sample()
         latents = latents * 0.18215
         return latents
     
-    def get_clip_embedding(self, x):
-        inputs = self.clip_processor(images=x, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-        clip_hidden_states = self.clip_encoder(**inputs).last_hidden_state
-        return clip_hidden_states
+    def latents2image(self, latents):
+        latents = 1 / 0.18215 * latents
+        image = self.vae.decode(latents).sample
+        return image.clamp(-1, 1)
     
-    def forward_process(self, latents):
-        # Sample noise that we'll add to the latents
-        noise = torch.randn_like(latents)
-        bsz = latents.shape[0]
-
-        # Sample a random timestep for each image
-        timesteps = torch.randint(0, self.noise_scheduler.config.num_train_timesteps, (bsz,), device=self.device, dtype=self.dtype)
-        timesteps = timesteps.long()
-        noisy_latents = self.noise_scheduler.add_noise(latents, noise, timesteps)
-        return noise, timesteps, noisy_latents
-    
-    def run(self, args):
-        train_log_file = open(osp.join(args.ckpt_path, "training_log.txt"), "a", 1)
-        val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
-
-        train_dataloader = train_lightings_loader(args)
-        val_dataloader = val_lightings_loader(args)
-    
-        # Scheduler and math around the number of training steps.
-        overrode_max_train_steps = False
-        num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-        if args.max_train_steps is None:
-            args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-            overrode_max_train_steps = True
-            
-        params_to_optimize = (
-            itertools.chain(self.unet.parameters(), self.adapter.parameters(),)
-        )
-            
-        optimizer = torch.optim.AdamW(params_to_optimize, lr=args.learning_rate, betas=(0.9, 0.999), weight_decay=1e-2, eps=1e-08)    
+    def forward_process(self, x_0):
+        noise = torch.randn_like(x_0) # Sample noise that we'll add to the latents
+        bsz = x_0.shape[0]
         
-        lr_scheduler = get_scheduler(
-            args.lr_scheduler,
-            optimizer=optimizer,
-            num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
-            num_training_steps=len(train_dataloader) * args.num_train_epochs,
-        )
+        timestep = torch.randint(1, self.noise_scheduler.config.num_train_timesteps, (bsz,), device=self.device) # Sample a random timestep for each image
+        timestep = timestep.long()
+        x_t = self.noise_scheduler.add_noise(x_0, noise, timestep) # Corrupt image
+        return noise, timestep, x_t
 
-        # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-        num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
-        if overrode_max_train_steps:
-            args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
-        # Afterwards we recalculate our number of training epochs
-        args.num_train_epochs = math.ceil(args.max_train_steps / num_update_steps_per_epoch)
-        print("num_train_epochs:", args.num_train_epochs)
+    def get_text_embedding(self, text_prompt, bsz):
+        tok = self.tokenizer(text_prompt, padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt")
+        text_embedding = self.text_encoder(tok.input_ids.to(self.device).repeat(bsz,1))[0]
+        return text_embedding
 
-        best_val_loss = float('inf')
-        for epoch in range(args.epoch, args.num_train_epochs):
-            self.unet.train()
-            self.adapter.train()
-            epoch_loss = 0.0
+    def log_validation(self):
+        val_loss = 0.0
+        for lightings, nmaps in tqdm(self.val_dataloader, desc="Validation"):
 
-            for lightings, _ in tqdm(train_dataloader):
-                lightings = lightings.view(-1, 3, args.image_size, args.image_size)
-
-                embedding = self.get_clip_embedding(lightings)
-                # Get CLIP embeddings
-                embedding = self.adapter(embedding) 
+            with torch.no_grad():
                 
-                latents = self.get_vae_latents(lightings.to(self.device, dtype=self.dtype))
+                lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
+                # nmaps = nmaps.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
+
+                # Convert images to latent space
+                latents = self.image2latents(lightings)
+                
+                # Add noise to the latents according to the noise magnitude at each timestep
                 noise, timesteps, noisy_latents = self.forward_process(latents)
 
-                # Diffusion process
-                model_pred = self.unet(noisy_latents, timesteps, embedding).sample
-                target = noise
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                epoch_loss += loss.item()
-                    
-                loss.backward()
-                nn.utils.clip_grad_norm_(self.unet.parameters(), args.max_grad_norm)
-                
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
-                torch.cuda.empty_cache()
-                
-                
-            epoch_loss /= len(train_dataloader)
-            print('Training - Epoch {}: Loss: {:.6f}'.format(epoch, epoch_loss))
-            train_log_file.write('Training - Epoch {}: Loss: {:.6f}\n'.format(epoch, epoch_loss))
-            
-            # evaluation
-            if epoch % args.val_every == 0 or epoch == args.num_train_epochs - 1:
-                self.unet.eval()
-                self.adapter.eval()
-                epoch_val_loss = 0.0
+                # Get CLIP embeddings
+                encoder_hidden_states = self.get_text_embedding(self.encoder_hidden_states, self.bs * 6) # [bs * 6, 77, 768]
 
-                for lightings, _ in tqdm(val_dataloader):
-                    with torch.no_grad():
-                        lightings = lightings.reshape(-1, 3, args.image_size, args.image_size).to(self.device)
+                # Training ControlNet
+                model_pred = self.unet(
+                    noisy_latents,
+                    timesteps,
+                    encoder_hidden_states=encoder_hidden_states,
+                ).sample
+
+                loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
+                val_loss += loss.item()
+
                 
-                        latents = self.get_vae_latents(lightings)
-                        noise, timesteps, noisy_latents = self.forward_process(latents)
-                        embedding = self.get_clip_embedding(lightings)
-                        
-                        # Get CLIP embeddings
-                        embedding = self.adapter(embedding)   
-                        
-                        model_pred = self.unet(noisy_latents, timesteps, embedding).sample
-                        target = noise
-                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                        
-                        epoch_val_loss += loss.item()
-                        
-                epoch_val_loss /= len(val_dataloader)            
-                print('Validation - Epoch {}: Loss: {:.6f}'.format(epoch, epoch_val_loss,))
-                val_log_file.write('Validation - Epoch {}: Loss: {:.6f}\n'.format(epoch, epoch_val_loss))
-        
-                if epoch_val_loss < best_val_loss:
-                    best_val_loss = epoch_val_loss
-                    model_path = args.ckpt_path+f'/best_unet_ckpt.pth'
+        val_loss /= len(self.val_dataloader)
+        print('Validation Loss: {:.6f}'.format(val_loss))
+        self.val_log_file.write('Validation Loss: {:.6f}\n'.format(val_loss))
+        return val_loss
+
+    def train(self):
+        text_prompt = ""
+
+        # Start Training #
+        loss_list = []
+        val_best_loss = float('inf')
+        for epoch in range(self.num_train_epochs):
+
+            epoch_loss = 0.0
+            for lightings, _ in tqdm(self.train_dataloader, desc="Training"):
+
+                self.optimizer.zero_grad()
+                lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
+                # nmaps = nmaps.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
+                
+                # Convert images to latent space
+                latents = self.image2latents(lightings)
+                # Add noise to the latents according to the noise magnitude at each timestep
+                noise, timesteps, noisy_latents = self.forward_process(latents) 
+                
+                # Predict the noise from Unet
+                model_pred = self.unet(
+                    noisy_latents,
+                    timesteps,
+                    encoder_hidden_states=self.encoder_hidden_states,
+                ).sample
+
+                # Compute loss and optimize model parameter
+                loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
+                loss.backward()
+                epoch_loss += loss.item()
+                nn.utils.clip_grad_norm_(self.controllora.parameters(), args.max_grad_norm)
+                
+                self.optimizer.step()
+                self.lr_scheduler.step()
+                
+            epoch_loss /= len(self.train_dataloader)
+            loss_list.append(epoch_loss)
+            print('Training - Epoch {}: Loss: {:.6f}'.format(epoch, epoch_loss))
+            self.train_log_file.write('Training - Epoch {}: Loss: {:.6f}\n'.format(epoch, epoch_loss))
+
+            # save model
+            if epoch % self.save_epoch == 0:
+                export_loss(args.ckpt_path + '/loss.png', loss_list)
+                val_loss = self.log_validation() # Evaluate
+                if val_loss < val_best_loss:
+                    val_best_loss = val_loss
+                    model_path = args.ckpt_path + f'/best_unet_ckpt.pth'
                     torch.save(self.unet.state_dict(), model_path)
-                    model_path = args.ckpt_path+f'/best_adapter_ckpt.pth'
-                    torch.save(self.adapter.state_dict(), model_path)
-                    print("Save the best checkpoint")
-        
-        val_log_file.close()
-        train_log_file.close()
+                    print("### Save Model ###")
+
 
     
 if __name__ == "__main__":
+
     args = parser.parse_args()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Current Device = {device}")
 
     if not os.path.exists(args.ckpt_path):
         os.makedirs(args.ckpt_path)
         
-    Training = Pipline()
-    Training.run(args)
+    runner = trainControlnet(args=args, device=device)
+    runner.train()

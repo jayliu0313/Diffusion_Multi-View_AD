@@ -13,6 +13,7 @@ from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from core.models.controllora import ControlLoRAModel
 from core.models.autoencoder import Autoencoder
+from core.models.network_util import Decom_Block
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg') 
@@ -21,9 +22,11 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
 parser.add_argument('--ckpt_path', default="checkpoints/controlnet_model/")
-parser.add_argument('--load_vae_ckpt_path', default="/home/jayliu0313/mil_test/checkpoints/rgb_checkpoints/pretrained_VAE_FCFU/best_ckpt.pth")
+parser.add_argument("--load_vae_ckpt", default="/mnt/home_6T/public/jayliu0313/mil_test/checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_meanfcloss_probchangefcfu/best_vae_ckpt.pth")
+parser.add_argument("--load_decom_ckpt", default="/mnt/home_6T/public/jayliu0313/mil_test/checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_meanfcloss_probchangefcfu/best_decomp_ckpt.pth")
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument('--batch_size', default=2, type=int)
+parser.add_argument("--save_epoch", type=int, default=3)
 
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
@@ -95,10 +98,21 @@ class trainControlnet():
         self.text_encoder = CLIPTextModel.from_pretrained(args.diffusion_id, subfolder="text_encoder")
         self.noise_scheduler = DDPMScheduler.from_pretrained(args.diffusion_id, subfolder="scheduler")
 
-        AE = Autoencoder(device)
-        AE.load_state_dict(torch.load(args.load_vae_ckpt_path, map_location=self.device))
-        self.vae = AE.vae
-        self.decomp = AE.decomp_block
+        # Load vae model
+        self.vae = AutoencoderKL.from_pretrained(
+                    args.diffusion_id,
+                    subfolder="vae",
+                    revision=args.revision,
+                    torch_dtype=torch.float32
+                )
+        self.decomp_block = Decom_Block(4)
+        # Load VAE checkpoint  
+        if args.load_vae_ckpt is not None:
+            print("Load best vae checkpoints")
+            self.vae.load_state_dict(torch.load(args.load_vae_ckpt, map_location=self.device))
+        if args.load_decom_ckpt is not None:
+            print("Load best decomposition block checkpoints")
+            self.decomp_block.load_state_dict(torch.load(args.load_decom_ckpt, map_location=self.device))
         
         self.unet = UNet2DConditionModel.from_pretrained(
                 args.diffusion_id,
@@ -116,12 +130,13 @@ class trainControlnet():
             self.controllora = ControlLoRAModel.from_unet(self.unet, lora_linear_rank=args.controllora_linear_rank, lora_conv2d_rank=args.controllora_conv2d_rank)
 
         self.vae.requires_grad_(False)
-        self.decomp.requires_grad_(False)
+        self.decomp_block.requires_grad_(False)
         self.unet.requires_grad_(False)
         self.text_encoder.requires_grad_(False)
         self.controllora.train()
 
         self.vae.to(self.device)
+        self.decomp_block.to(self.device)
         self.unet.to(self.device)
         self.text_encoder.to(self.device)
         self.controllora.to(self.device)
@@ -165,7 +180,7 @@ class trainControlnet():
     def forward_process(self, x_0):
         noise = torch.randn_like(x_0) # Sample noise that we'll add to the latents
         bsz = x_0.shape[0]
-        
+        # 
         timestep = torch.randint(1, self.noise_scheduler.config.num_train_timesteps, (bsz,), device=self.device) # Sample a random timestep for each image
         timestep = timestep.long()
         x_t = self.noise_scheduler.add_noise(x_0, noise, timestep) # Corrupt image
@@ -187,9 +202,9 @@ class trainControlnet():
 
                 # Convert images to latent space
                 latents = self.image2latents(lightings)
-                fc = self.decomp.get_fc(latents)
+                mean_fc = self.decomp_block.get_meanfc(latents)
                 # Add noise to the latents according to the noise magnitude at each timestep
-                noise, timesteps, noisy_latents = self.forward_process(fc)
+                noise, timesteps, noisy_latents = self.forward_process(mean_fc)
 
                 # Get CLIP embeddings
                 encoder_hidden_states = self.get_text_embedding(text_embedding, self.bs * 6) # [bs * 6, 77, 768]
@@ -239,9 +254,9 @@ class trainControlnet():
                 
                 # Convert images to latent space
                 latents = self.image2latents(lightings)
-                
+                mean_fc = self.decomp_block.get_meanfc(latents)
                 # Add noise to the latents according to the noise magnitude at each timestep
-                noise, timesteps, noisy_latents = self.forward_process(latents) 
+                noise, timesteps, noisy_latents = self.forward_process(mean_fc) 
                 
                 # Get CLIP embeddings
                 encoder_hidden_states = self.get_text_embedding(text_prompt, self.bs * 6) # [bs * 6, 77, 768]

@@ -34,11 +34,12 @@ class Decom_Block(nn.Module):
         if mid_ch == None:
             mid_ch = ch
         self.fc_conv = conv3x3(ch, mid_ch)
-        self.fuse_fc = conv3x3(6*ch, ch)
+        # self.fuse_fc = conv3x3(6*ch, ch)
         
         self.fu_conv = conv3x3(ch, mid_ch)
         # self.fuse_fu = conv3x3(6*ch, ch)
-        self.activate = nn.SELU()
+        # self.activate = nn.SELU()
+        self.activate = nn.GELU()
         self.fuse_conv = conv3x3(mid_ch, ch)
         
     def forward(self, x):
@@ -67,21 +68,20 @@ class Decom_Block(nn.Module):
         x = self.activate(self.fuse_conv(fc+fu))
         return x
     
-    def prbo_rand_meanfc_forward(self, x, prob=0.5):
+    def meanfc_prbo_randfu_forward(self, x, prob=0.5):
         fc = self.fc_conv(x)
         fu = self.fu_conv(x)
+        _, C, H, W = x.size()
+        fc = fc.reshape(-1, 6, C, H, W)
+        meanfc = torch.mean(fc, dim = 1)
+        meanfc = torch.repeat_interleave(meanfc, 6, dim=0)
         if random.uniform(0, 1) <= prob:
-            _, C, H, W = x.size()
-            fc = fc.reshape(-1, 6, C, H, W)
-            fc = torch.mean(fc, dim = 1)
-            fc = fc.repeat(6, 1, 1, 1)
-            
             fu = fu.reshape(-1, 6, C, H, W)
             B = fu.shape[0]
             random_indices = torch.randperm(B)
             fu = fu[random_indices, :, :, :]
             fu = fu.reshape(-1, C, H, W)
-        return self.activate(self.fuse_conv(fc+fu))
+        return self.activate(self.fuse_conv(meanfc+fu))
          
     def prob_rand_forward(self, x, prob=0.5):
         fc = self.fc_conv(x)
@@ -109,7 +109,7 @@ class Decom_Block(nn.Module):
         _, C, H, W = x.size()
         temp = fc.reshape(-1, 6, C, H, W)
         meanfc = torch.mean(temp, dim = 1)
-        meanfc = meanfc.repeat(6, 1, 1, 1)
+        meanfc = torch.repeat_interleave(meanfc, 6, dim=0)
         loss_fc = F.mse_loss(fc, meanfc, reduction="mean")
         if random.uniform(0, 1) <= prob:
             fc = fc.reshape(-1, 6, C, H, W)
@@ -126,43 +126,50 @@ class Decom_Block(nn.Module):
         x = self.activate(self.fuse_conv(fc+fu))
         return x, loss_fc
     
-    def fusefc_prob_forward(self, x, prob=0.5):
+    def fusefc_prob_randfu_forward(self, x, prob=0.5):
         _, C, H, W = x.size()
         fc = self.fc_conv(x)
-        # print(fc.shape)
         temp = fc.reshape(-1, 6 * C, H, W)
-        # print(fc.shape)
         fuse_fc = self.fuse_fc(temp)
-        # print(fuse_fc.shape)
-        fuse_fc = fuse_fc.repeat(6, 1, 1, 1)
-        # print(fuse_fc.shape)
-        loss_fc = F.mse_loss(fc, fuse_fc, reduction="mean")
-        
+        fuse_fc = torch.repeat_interleave(fuse_fc, 6, dim=0)
+
         fu = self.fu_conv(x)
         if random.uniform(0, 1) <= prob:
-            fc = fc.reshape(-1, 6, C, H, W)
-            random_indices = torch.randperm(6)
-            fc = fc[:, random_indices, :, :]
-            fc = fc.reshape(-1, C, H, W)
-            
             fu = fu.reshape(-1, 6, C, H, W)
             B = fu.shape[0]
             random_indices = torch.randperm(B)
             fu = fu[random_indices, :, :, :]
             fu = fu.reshape(-1, C, H, W)
-        x = self.activate(self.fuse_conv(fc+fu))
-        return x, loss_fc
+        x = self.activate(self.fuse_conv(fuse_fc+fu))
+        return x
     
     def get_fc(self, latents):
         fc = self.fc_conv(latents)
         return fc
     
-    def get_meanfc(self, latents):
+    def get_fusefc(self, latents, keep_dim=True):
+        _, C, H, W = latents.size()
+        fc = self.fc_conv(latents)
+        temp = fc.reshape(-1, 6 * C, H, W)
+        # print(fc.shape)
+        fuse_fc = self.fuse_fc(temp)
+        # print(fuse_fc.shape)
+        if keep_dim == True:
+            fuse_fc = torch.repeat_interleave(fuse_fc, 6, dim=0)
+        return fuse_fc
+
+    def get_meanfc(self, latents, keep_dim=True):
         _, C, H, W = latents.size()
         fc = self.fc_conv(latents)
         fc = fc.reshape(-1, 6, C, H, W)
         mean_fc = torch.mean(fc, dim = 1)
-        mean_fc = mean_fc.repeat(6, 1, 1, 1)
+        print(mean_fc.shape)
+        if keep_dim:
+            mean_fc = torch.repeat_interleave(mean_fc, 6, dim=0)
+            a = mean_fc.reshape(-1, 6, C, H, W)[0, 1, :, :, :]
+            b = mean_fc.reshape(-1, 6, C, H, W)[0, 2, :, :, :]
+            if torch.equal(a, b):
+                print("good!!!!!!!!!!!!")
         return mean_fc
         
     def get_fu(self, latents):
@@ -176,8 +183,176 @@ class Decom_Block(nn.Module):
             return self.activate(self.fuse_conv(fc))
         elif fu is not None:
             return self.activate(self.fuse_conv(fu))
+
+
+# class Decom_Block(nn.Module):
+#     def __init__(self, ch, mid_ch=None):
+#         super(Decom_Block, self).__init__()
+#         if mid_ch == None:
+#             mid_ch = ch
+#         self.fc_conv = nn.Sequential(
+#             nn.Conv2d(ch, mid_ch, 3, padding=1),
+#             nn.GELU(),
+#             nn.Conv2d(mid_ch, ch, 3, padding=1),                        
+#         )
+#         self.fuse_fc = nn.Sequential(
+#             nn.Conv2d(ch*6, ch*3, 3, padding=1),
+#             nn.GELU(),
+#             nn.Conv2d(ch*3, ch, 3, padding=1),                          
+#         )
         
+#         self.fu_conv = nn.Sequential(
+#             nn.Conv2d(ch, mid_ch, 3, padding=1),
+#             nn.GELU(),
+#             nn.Conv2d(mid_ch, ch, 3, padding=1),                          
+#         )
+#         # self.fuse_fu = conv3x3(6*ch, ch)
+#         self.fuse_conv = nn.Sequential(
+#             nn.Conv2d(ch, mid_ch, 3, padding=1),
+#             nn.GELU(),
+#             nn.Conv2d(mid_ch, ch, 3, padding=1),
+#         )
+        
+#     def forward(self, x):
+#         fc = self.fc_conv(x)
+#         fu = self.fu_conv(x)
+#         x = self.fuse_conv(fc+fu)
+#         return x
     
+#     def rand_forward(self, x):
+#         fc = self.fc_conv(x)
+#         fu = self.fu_conv(x)
+
+#         _, C, H ,W = fc.size()
+#         fc = fc.reshape(-1, 6, C, H, W)
+#         random_indices = torch.randperm(6)
+#         fc = fc[:, random_indices, :, :]
+#         fc = fc.reshape(-1, C, H, W)
+        
+#         _, C, H ,W = fu.size()
+#         fu = fu.reshape(-1, 6, C, H, W)
+#         B = fu.shape[0]
+#         random_indices = torch.randperm(B)
+#         fu = fu[random_indices, :, :, :]
+#         fu = fu.reshape(-1, C, H, W)
+
+#         x = self.fuse_conv(fc+fu)
+#         return x
+    
+#     def prbo_rand_meanfc_forward(self, x, prob=0.5):
+#         fc = self.fc_conv(x)
+#         fu = self.fu_conv(x)
+#         _, C, H, W = x.size()
+#         fc = fc.reshape(-1, 6, C, H, W)
+#         fc = torch.mean(fc, dim = 1)
+#         fc = torch.repeat_interleave(fc, 6, dim=0)
+#         if random.uniform(0, 1) <= prob:
+#             fu = fu.reshape(-1, 6, C, H, W)
+#             B = fu.shape[0]
+#             random_indices = torch.randperm(B)
+#             fu = fu[random_indices, :, :, :]
+#             fu = fu.reshape(-1, C, H, W)
+#         return self.fuse_conv(fc+fu)
+         
+#     def prob_rand_forward(self, x, prob=0.5):
+#         fc = self.fc_conv(x)
+#         fu = self.fu_conv(x)
+
+#         if random.uniform(0, 1) <= prob:
+#             _, C, H, W = x.size()
+#             fc = fc.reshape(-1, 6, C, H, W)
+#             random_indices = torch.randperm(6)
+#             fc = fc[:, random_indices, :, :]
+#             fc = fc.reshape(-1, C, H, W)
+  
+#             fu = fu.reshape(-1, 6, C, H, W)
+#             B = fu.shape[0]
+#             random_indices = torch.randperm(B)
+#             fu = fu[random_indices, :, :, :]
+#             fu = fu.reshape(-1, C, H, W)
+
+#         x = self.fuse_conv(fc+fu)
+#         return x
+    
+#     def prob_rand_forward_meanfcloss(self, x, prob=0.5):
+#         fc = self.fc_conv(x)
+#         fu = self.fu_conv(x)
+#         _, C, H, W = x.size()
+#         temp = fc.reshape(-1, 6, C, H, W)
+#         meanfc = torch.mean(temp, dim = 1)
+#         mean_fc = torch.repeat_interleave(mean_fc, 6, dim=0)
+#         loss_fc = F.mse_loss(fc, meanfc, reduction="mean")
+#         if random.uniform(0, 1) <= prob:
+#             fc = fc.reshape(-1, 6, C, H, W)
+#             random_indices = torch.randperm(6)
+#             fc = fc[:, random_indices, :, :]
+#             fc = fc.reshape(-1, C, H, W)
+  
+#             fu = fu.reshape(-1, 6, C, H, W)
+#             B = fu.shape[0]
+#             random_indices = torch.randperm(B)
+#             fu = fu[random_indices, :, :, :]
+#             fu = fu.reshape(-1, C, H, W)
+            
+#         x = self.fuse_conv(fc+fu)
+#         return x, loss_fc
+    
+#     def fusefc_prob_forward(self, x, prob=0.5):
+#         _, C, H, W = x.size()
+#         fc = self.fc_conv(x)
+#         # print(fc.shape)
+#         temp = fc.reshape(-1, 6 * C, H, W)
+#         # print(fc.shape)
+#         fuse_fc = self.fuse_fc(temp)
+#         # print(fuse_fc.shape)
+#         fuse_fc = fuse_fc.repeat(6, 1, 1, 1)
+#         # print(fuse_fc.shape)
+#         fu = self.fu_conv(x)
+#         if random.uniform(0, 1) <= prob:
+#             fu = fu.reshape(-1, 6, C, H, W)
+#             B = fu.shape[0]
+#             random_indices = torch.randperm(B)
+#             fu = fu[random_indices, :, :, :]
+#             fu = fu.reshape(-1, C, H, W)
+#         x = self.fuse_conv(fuse_fc+fu)
+#         return x
+    
+#     def get_fc(self, latents):
+#         fc = self.fc_conv(latents)
+#         return fc
+    
+#     def get_fusefc(self, latents, keep_dim=True):
+#         _, C, H, W = latents.size()
+#         fc = self.fc_conv(latents)
+#         temp = fc.reshape(-1, 6 * C, H, W)
+#         # print(fc.shape)
+#         fuse_fc = self.fuse_fc(temp)
+#         # print(fuse_fc.shape)
+#         if keep_dim == True:
+#             fuse_fc = torch.repeat_interleave(fuse_fc, 6, dim=0)
+#         return fuse_fc
+
+#     def get_meanfc(self, latents, keep_dim=True):
+#         _, C, H, W = latents.size()
+#         fc = self.fc_conv(latents)
+#         fc = fc.reshape(-1, 6, C, H, W)
+#         mean_fc = torch.mean(fc, dim = 1)
+#         if keep_dim:
+#             mean_fc = torch.repeat_interleave(mean_fc, 6, dim=0)
+#         return mean_fc
+        
+#     def get_fu(self, latents):
+#         fu = self.fu_conv(latents)
+#         return fu
+    
+#     def fuse_both(self, fc=None, fu=None):
+#         if fc is not None and fu is not None:
+#             return self.activate(self.fuse_conv(fc + fu))
+#         elif fc is not None:
+#             return self.activate(self.fuse_conv(fc))
+#         elif fu is not None:
+#             return self.activate(self.fuse_conv(fu))
+   
 class BasicBlock(nn.Module):
     def __init__(
         self,
@@ -281,201 +456,6 @@ class Conv_Basic(nn.Module):
             x = self.maxpool(x)
         return x
         
-# class MaskedConv2d_3x3(nn.Module):
-#     def __init__(self, in_channels, out_channels, padding=1, bias=True):
-#         super(MaskedConv2d_3x3, self).__init__()
-#         kernel_size = 3 
-#         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
-#         self.conv.weight.data[:, :, 1, 1] = 0
-#         self.conv.weight.data[:, :, 1, 1].requires_grad = False
-
-#     def forward(self, x):
-#         conv_result = self.conv(x)        
-#         return conv_result
-
-# class MaskedConv2d_5x5(nn.Module):
-#     def __init__(self, in_channels, out_channels, padding=2, bias=True):
-#         super(MaskedConv2d_5x5, self).__init__()
-#         kernel_size = 5 
-#         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
-#         for i in range(1, 4):
-#             for j in range(1, 4):
-#                 self.conv.weight.data[:, :, i, j] = 0
-#                 self.conv.weight.data[:, :, i, j].requires_grad = False
-#                 # print("i:", i)
-#                 # print("j:", j)
-
-#     def forward(self, x):
-#         conv_result = self.conv(x)        
-#         return conv_result
-
-# class MaskedConv2d_7x7(nn.Module):
-#     def __init__(self, in_channels, out_channels, padding=3, bias=True):
-#         super(MaskedConv2d_7x7, self).__init__()
-#         kernel_size = 7
-#         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
-#         for i in range(1, 5):
-#             for j in range(1, 5):
-#                 self.conv.weight.data[:, :, i, j] = 0
-#                 self.conv.weight.data[:, :, i, j].requires_grad = False
-#                 # print("i:", i)
-#                 # print("j:", j)
-
-#     def forward(self, x):
-#         conv_result = self.conv(x)        
-#         return conv_result
-    
-# class iAFF(nn.Module):
-#     '''
-#     多特征融合 iAFF
-#     '''
-
-#     def __init__(self, channels=256, r=4, norm=None):
-#         super(iAFF, self).__init__()
-#         inter_channels = int(channels // r)
-#         if norm == None:
-#             # 本地注意力
-#             self.local_att = nn.Sequential(
-#                 nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-#                 nn.ReLU(inplace=True),
-#                 nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-#             )
-
-#             # 全局注意力
-#             self.global_att = nn.Sequential(
-#                 nn.AdaptiveAvgPool2d(1),
-#                 nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-#                 nn.ReLU(inplace=True),
-#                 nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-#             )
-
-#             # 第二次本地注意力
-#             self.local_att2 = nn.Sequential(
-#                 nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-#                 nn.ReLU(inplace=True),
-#                 nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-#             )
-#             # 第二次全局注意力
-#             self.global_att2 = nn.Sequential(
-#                 nn.AdaptiveAvgPool2d(1),
-#                 nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-#                 nn.ReLU(inplace=True),
-#                 nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-#             )
-
-#             self.sigmoid = nn.Sigmoid()
-#             self.fusion = nn.Sequential(
-#                 nn.Conv2d(channels, channels, kernel_size=1, stride=1, padding=0),
-            
-#                 nn.ReLU(inplace=True),
-#             )
-#         elif norm == "batchNorm":
-#             self.local_att = nn.Sequential(
-#                 nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(inter_channels),
-#                 nn.ReLU(inplace=True),
-#                 nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(channels),
-#             )
-
-#             # 全局注意力
-#             self.global_att = nn.Sequential(
-#                 nn.AdaptiveAvgPool2d(1),
-#                 nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(inter_channels),
-#                 nn.ReLU(inplace=True),
-#                 nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(channels),
-#             )
-
-#             # 第二次本地注意力
-#             self.local_att2 = nn.Sequential(
-#                 nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(inter_channels),
-#                 nn.ReLU(inplace=True),
-#                 nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(channels),
-#             )
-#             # 第二次全局注意力
-#             self.global_att2 = nn.Sequential(
-#                 nn.AdaptiveAvgPool2d(1),
-#                 nn.Conv2d(channels, inter_channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(inter_channels),
-#                 nn.ReLU(inplace=True),
-#                 nn.Conv2d(inter_channels, channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(channels),
-#             )
-
-#             self.sigmoid = nn.Sigmoid()
-#             self.fusion = nn.Sequential(
-#                 nn.Conv2d(channels, channels, kernel_size=1, stride=1, padding=0),
-#                 nn.BatchNorm2d(channels),
-#                 nn.ReLU(inplace=True),
-#             )
-
-#     def forward(self, fc, fu):
-#         xa = fc + fu
-#         xl = self.local_att(xa)
-#         xg = self.global_att(xa)
-#         xlg = xl + xg
-#         wei = self.sigmoid(xlg)
-#         xi = fc * wei + fu * (1 - wei)
-
-#         xl2 = self.local_att2(xi)
-#         xg2 = self.global_att(xi)
-#         xlg2 = xl2 + xg2
-#         wei2 = self.sigmoid(xlg2)
-#         xo = fc * wei2 + fu * (1 - wei2)
-#         xo = self.fusion(xo)
-#         return xo
-
-# class CrossAttention(nn.Module):
-#     def __init__(self, embed_size = 256, num_heads = 4, window_size = 3):
-#         super(CrossAttention, self).__init__()
-#         self.num_heads = num_heads
-#         self.head_dim = embed_size // num_heads
-#         self.embed_size = embed_size
-#         self.query = nn.Linear(embed_size, embed_size)
-#         self.key = nn.Linear(embed_size * 6, embed_size)
-#         self.value = nn.Linear(embed_size * 6, embed_size)
-#         self.softmax = nn.Softmax(dim=1)
-#         self.out_linear = nn.Linear(embed_size, embed_size)
-#         self.window_size = window_size
-
-#     def forward(self, x):
-#         B, V, C, H, W = x.size()
-#         seq_len = H * W * V
-#         q = x.permute(0, 1, 3, 4, 2).reshape(B, seq_len, C)
-#         k = x.permute(0, 3, 4, 1, 2).reshape(B, H*W, V*C)
-#         v = k
-#         # Linearly transform the queries, keys, and values
-#         q = self.query(q)
-#         k = self.key(k)
-#         v = self.value(v)
-        
-#         # Split the queries, keys, and values into multiple heads
-#         q = q.view(B, -1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-#         k = k.view(B, -1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-#         v = v.view(B, -1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-        
-#         # Compute the scaled dot-product attention
-#         scaled_attention_logits = torch.matmul(q, k.permute(0, 1, 3, 2)) / torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float32))
-#         mask = torch.zeros(seq_len, H*W).to(x.device)
-#         for i in range(seq_len):
-#             mask[i, max(0, i - self.window_size):min(seq_len, i + self.window_size + 1)] = 1.0
-        
-#         # Apply the mask (if provided)
-#         if mask is not None:
-#             scaled_attention_logits += (mask * -1e9)
-        
-#         attention_weights = torch.nn.functional.softmax(scaled_attention_logits, dim=-1)
-#         output = torch.matmul(attention_weights, v)
-        
-#         # Concatenate and linearly transform the output
-#         output = output.permute(0, 2, 1, 3).contiguous().view(B, -1, C)
-#         output = self.out_linear(output)
-#         output = x.reshape(B * V, C, H, W) + output.reshape(B * V, C, H, W)
-#         return output
 
 def double_conv(in_channels, out_channels, norm=None):
     if norm == None:
@@ -495,113 +475,6 @@ def double_conv(in_channels, out_channels, norm=None):
             nn.ReLU(inplace=True),
         )   
 
-# def masked_double_conv(in_channels, out_channels, norm=None):
-#     if norm == None:
-#         return nn.Sequential(
-#             MaskedConv2d_3x3(in_channels, out_channels, padding=1),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_3x3(out_channels, out_channels, padding=1),
-#             nn.ReLU(inplace=True),
-#         )
-#     elif norm == "batchNorm":
-#         return nn.Sequential(
-#             MaskedConv2d_3x3(in_channels, out_channels, padding=1),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_3x3(out_channels, out_channels, padding=1),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-#     elif norm == "instanceNorm":
-#          return nn.Sequential(
-#             MaskedConv2d_3x3(in_channels, out_channels, padding=1),
-#             nn.InstanceNorm2d(in_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_3x3(in_channels, out_channels, padding=1),
-#             nn.InstanceNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-
-# def masked7x7_5x5_double_conv(in_channels, out_channels, norm=None):
-#     if norm == None:
-#         return nn.Sequential(
-#             MaskedConv2d_7x7(in_channels, out_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_5x5(out_channels, out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-#     elif norm == "batchNorm":
-#         return nn.Sequential(
-#             MaskedConv2d_7x7(in_channels, out_channels),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_5x5(out_channels, out_channels),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-#     elif norm == "instanceNorm":
-#          return nn.Sequential(
-#             MaskedConv2d_7x7(in_channels, out_channels),
-#             nn.InstanceNorm2d(in_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_5x5(in_channels, out_channels),
-#             nn.InstanceNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-         
-# def masked5x5_3x3_double_conv(in_channels, out_channels, norm=None):
-#     if norm == None:
-#         return nn.Sequential(
-#             MaskedConv2d_5x5(in_channels, out_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_3x3(out_channels, out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-#     elif norm == "batchNorm":
-#         return nn.Sequential(
-#             MaskedConv2d_5x5(in_channels, out_channels),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_3x3(out_channels, out_channels),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-#     elif norm == "instanceNorm":
-#          return nn.Sequential(
-#             MaskedConv2d_5x5(in_channels, out_channels),
-#             nn.InstanceNorm2d(in_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_3x3(in_channels, out_channels),
-#             nn.InstanceNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-
-# def pure_masked5x5_double_conv(in_channels, out_channels, norm=None):
-#     if norm == None:
-#         return nn.Sequential(
-#             MaskedConv2d_5x5(in_channels, out_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_5x5(out_channels, out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-#     elif norm == "batchNorm":
-#         return nn.Sequential(
-#             MaskedConv2d_5x5(in_channels, out_channels),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_5x5(out_channels, out_channels),
-#             nn.BatchNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
-#     elif norm == "instanceNorm":
-#          return nn.Sequential(
-#             MaskedConv2d_5x5(in_channels, out_channels),
-#             nn.InstanceNorm2d(in_channels),
-#             nn.ReLU(inplace=True),
-#             MaskedConv2d_5x5(in_channels, out_channels),
-#             nn.InstanceNorm2d(out_channels),
-#             nn.ReLU(inplace=True),
-#         )
    
 def gauss_noise_tensor(img, max_range = 1.5):
     assert isinstance(img, torch.Tensor)

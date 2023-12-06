@@ -125,10 +125,6 @@ class TestLightings(BaseDataset):
 class MemoryLightings(BaseDataset):
     def __init__(self, class_name, img_size, dataset_path):
         super().__init__(split="train", class_name=class_name, img_size=img_size, dataset_path=dataset_path)
-        self.gt_transform = transforms.Compose([
-            transforms.Resize((img_size, img_size), interpolation=transforms.InterpolationMode.NEAREST),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)])
         self.data_paths = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
     def load_dataset(self):
@@ -183,7 +179,6 @@ class TrainLightings(Dataset):
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
         transforms.ToTensor(),
-        #  transforms.Normalize(mean=0.5, std=)
         ])
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
@@ -249,7 +244,6 @@ class ValLightings(Dataset):
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
         transforms.ToTensor(),
-        #  transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
         ])
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1

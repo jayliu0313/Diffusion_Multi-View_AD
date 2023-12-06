@@ -7,6 +7,7 @@ import datetime
 from core.runner import Runner
 import datetime
 import pandas as pd
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='test')
 # Dataset and environment setup
@@ -14,28 +15,33 @@ parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datas
 parser.add_argument('--output_dir', default="./output")
 parser.add_argument('--dataset_type', default="eyecandies")
 parser.add_argument('--batch_size', default=1, type=int)
-parser.add_argument('--image_size', default=256, type=int)
+parser.add_argument('--image_size', default=224, type=int)
 parser.add_argument("--workers", default=4)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 
 # Method choose
-parser.add_argument('--method_name', default="vae_rec", help="vae_rec, rgb_nmap_rec, nmap_repair, nmap_rec, memory")
+parser.add_argument('--method_name', default="DDIM_Method", help="vae_rec, controlnet_rec, diffusion_rec, rgb_nmap_rec, nmap_repair, nmap_rec, memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 
-#### Reconstruction Method ####
-parser.add_argument("--load_vae_ckpt", default="checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_RandomChangeFCFU/continue2_lossfc/best_vae_ckpt.pth")
-parser.add_argument("--load_decom_ckpt", default="checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_RandomChangeFCFU/continue2_lossfc/best_decomp_ckpt.pth")
+#### Load Checkpoint ####
+# parser.add_argument('--load_vae_ckpt_path', type=str, default="./checkpoints/rgb_checkpoints/pretrained_VAE_FCFU/best_ckpt.pth")
+parser.add_argument("--load_vae_ckpt", default=None)
+parser.add_argument("--load_decomp_ckpt", default=None)
+parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_InputImage_TextNull_woTrainVae/best_unet.pth")   #"/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_InputImage_TextNull_woTrainVae/best_unet.pth"
+
+parser.add_argument('--load_controlnet_ckpt', type=str, default=None)
+parser.add_argument("--load_backbone_ckpt", default=None)
 parser.add_argument('--load_nmap_ckpt_path', default=None)
 
-#### Diffusion Method ####
-# Controlnet Model
-parser.add_argument('--load_controlnet_ckpt', type=str, default="./checkpoints/controlnet_model/fcInput_nmapCondition/controlnet_epoch_100.pth")
+parser.add_argument('--backbone_name', default="vit_base_patch8_224_dino")
 # Unet Model (Diffusion Model)
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
-# Diffusion Model Setup
-parser.add_argument("--noise_intensity", type=int, default=50)
-parser.add_argument("--step_size", type=int, default=2)
+parser.add_argument("--noise_intensity", type=int, default=500)
+parser.add_argument("--step_size", type=int, default=20)
+
+
+# Controlnet Model Setup
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
 parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
 
