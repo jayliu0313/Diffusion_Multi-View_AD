@@ -20,14 +20,14 @@ parser.add_argument("--workers", default=4)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 
 # Method choose
-parser.add_argument('--method_name', default="DDIM_Method", help="vae_rec, controlnet_rec, diffusion_rec, rgb_nmap_rec, nmap_repair, nmap_rec, memory")
+parser.add_argument('--method_name', default="ddim_rec", help="vae_rec, controlnet_rec, ddim_rec, diffusion_rec, rgb_nmap_rec, nmap_repair, nmap_rec, memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 
 #### Load Checkpoint ####
 # parser.add_argument('--load_vae_ckpt_path', type=str, default="./checkpoints/rgb_checkpoints/pretrained_VAE_FCFU/best_ckpt.pth")
-parser.add_argument("--load_vae_ckpt", default=None)
+parser.add_argument("--load_vae_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/vae_stable-diffusion-v1-4_woDecomp/vae_decomp_best_ckpt.pth")
 parser.add_argument("--load_decomp_ckpt", default=None)
-parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_InputImage_TextNull_woTrainVae/best_unet.pth")   #"/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_InputImage_TextNull_woTrainVae/best_unet.pth"
+parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/PretrainVAE_DiffusionV1-4_TextPromptAnomalyNormal_prb05_scale0.5/best_unet_ckpt.pth")   #"/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_InputImage_TextNull_woTrainVae/best_unet.pth"
 
 parser.add_argument('--load_controlnet_ckpt', type=str, default=None)
 parser.add_argument("--load_backbone_ckpt", default=None)
@@ -37,8 +37,8 @@ parser.add_argument('--backbone_name', default="vit_base_patch8_224_dino")
 # Unet Model (Diffusion Model)
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
-parser.add_argument("--noise_intensity", type=int, default=500)
-parser.add_argument("--step_size", type=int, default=20)
+parser.add_argument("--noise_intensity", type=int, default=50)
+parser.add_argument("--step_size", type=int, default=5)
 
 
 # Controlnet Model Setup
@@ -62,10 +62,10 @@ def run_eyecandies(args):
     if args.dataset_type=='eyecandies':
         classes = [
         'CandyCane',
-        'ChocolateCookie',
+        # 'ChocolateCookie',
         # 'ChocolatePraline',
         # 'Confetto',
-        'GummyBear',
+        # 'GummyBear',
         # 'HazelnutTruffle',
         # 'LicoriceSandwich',
         # 'Lollipop',

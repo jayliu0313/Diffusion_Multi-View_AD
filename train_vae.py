@@ -20,7 +20,7 @@ matplotlib.use('Agg')
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_woDecomp")
+parser.add_argument('--ckpt_path', default="checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_woDecomp_allcls")
 # parser.add_argument('--diffusion_id', default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--load_vae_ckpt", default=None)
 parser.add_argument("--load_decom_ckpt", default=None)

@@ -28,7 +28,7 @@ class Runner():
             self.method = ControlNet_Rec(args, cls_path)
         elif args.method_name == "diffusion_rec":
             self.method = Diffusion_Rec(args, cls_path)
-        elif args.method_name == "DDIM_Method":
+        elif args.method_name == "ddim_rec":
             self.method = DDIM_Rec(args, cls_path)
         # elif args.method_name == "mean_rec":
         #     self.method = Mean_Rec(args, cls_path)
@@ -52,11 +52,11 @@ class Runner():
 
     def evaluate(self):
         dataloader = test_lightings_loader(self.args, self.cls, "test")
-        with torch.no_grad():
-            for i, ((images, nmap), gt, label) in enumerate(tqdm(dataloader)):
-                # if i == 5:
-                #     break
-                self.method.predict(i, images, nmap, gt, label)
+        
+        for i, ((images, nmap), gt, label) in enumerate(tqdm(dataloader)):
+            # if i == 5:
+            #     break
+            self.method.predict(i, images, nmap, gt, label)
 
         image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics()
         total_rec_loss = self.method.get_rec_loss()
