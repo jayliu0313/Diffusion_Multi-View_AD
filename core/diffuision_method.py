@@ -4,24 +4,20 @@ import torch.nn.functional as F
 import math
 
 from core.reconstruct_method import Reconstruct_Method
-from utils.utils import t2np, KNNGaussianBlur
+from utils.utils import t2np
 # from patchify import patchify
 from utils.visualize_util import display_one_img, display_image
-from diffusers import DDPMScheduler, UNet2DConditionModel, UniPCMultistepScheduler, DDIMScheduler
+from diffusers import DDIMScheduler
+from core.models.unet_model import MyUNet2DConditionModel
 from transformers import CLIPTextModel, AutoTokenizer
 from torchvision.transforms import transforms
 from kornia.filters import gaussian_blur2d
 
-from core.models.network_util import Decom_Block
 from core.models.controllora import  ControlLoRAModel
-from core.models.backnone import RGB_Extractor
-from typing import Optional, Union, Tuple, List, Callable, Dict
 from tqdm import tqdm
 from torch.optim.adam import Adam
 from utils.ptp_utils import *
 import torch.nn.functional as nnf
-
-NUM_DDIM_STEPS = 50
 
 class Diffusion_Method(Reconstruct_Method):
     def __init__(self, args, cls_path):
@@ -32,8 +28,10 @@ class Diffusion_Method(Reconstruct_Method):
         self.num_inference_timesteps = int(len(self.noise_scheduler.timesteps) / args.step_size)
         self.noise_scheduler.set_timesteps(self.num_inference_timesteps)
         self.timesteps_list = self.noise_scheduler.timesteps[self.noise_scheduler.timesteps <= args.noise_intensity]
+        print("ddim loop steps:", len(self.timesteps_list))
+        print("Noise Intensity = ", self.timesteps_list)
         
-        self.unet = UNet2DConditionModel.from_pretrained(
+        self.unet = MyUNet2DConditionModel.from_pretrained(
         args.diffusion_id,
         subfolder="unet",
         revision=args.revision)
@@ -51,12 +49,9 @@ class Diffusion_Method(Reconstruct_Method):
         self.unet.eval()
         self.text_encoder.eval()
           
-        
-        print("Noise Intensity = ", self.timesteps_list)
         # Prepare text embedding
-        self.encoder_hidden_states = self.get_text_embedding("normal", 6) # [6, 77, 768]
-        
-        
+        self.encoder_hidden_states = self.get_text_embedding("", 6) # [6, 77, 768]
+            
     def forward_process_with_T(self, latents, T):
         noise = torch.randn_like(latents)
         bsz = latents.shape[0]
@@ -172,29 +167,38 @@ class Diffusion_Rec(Diffusion_Method):
         
         return noisy_latents
     
-    def predict(self, item, lightings, nmaps, gt, label):
+    def predict(self, item, lightings, nmaps, text_prompt, gt, label):
         lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [6, 3, 256, 256]
         #fc_lightings = self.get_FC_lightings(lightings)
         # nmaps = nmaps.to(self.device).repeat_interleave(6, dim=0) # [6, 3, 256, 256]
-        
         latents = self.image2latents(lightings)
         rec_latents = self.reconstruct_latents(latents, self.encoder_hidden_states)
         rec_lightings = self.latents2image(rec_latents)
-        latents = latents.permute(0, 2, 3, 1)
-        rec_latents = rec_latents.permute(0, 2, 3, 1)
-        final_map = self.pdist(latents, rec_latents)
-
-        if self.score_type == 0:
-            final_map = torch.mean(final_map, dim=0)
-            final_score = torch.max(final_map)
+        if True:
+            latents = latents.permute(0, 2, 3, 1)
+            rec_latents = rec_latents.permute(0, 2, 3, 1)
+            final_map = self.pdist(latents, rec_latents)
+            if self.score_type == 0:
+                final_map = torch.mean(final_map, dim=0)
+                final_score = torch.max(final_map)
+            else:
+                final_map, idx = torch.max(final_map, dim=0)
+                # print(s_map_size28.shape)
+                final_score = final_map[idx]
+            H, W = final_map.size()
+            final_map = final_map.view(1, 1, H, W)
+            final_map = torch.nn.functional.interpolate(final_map, size=(self.image_size, self.image_size), mode='bilinear', align_corners=False)
         else:
-            final_map, idx = torch.max(final_map, dim=0)
-            # print(s_map_size28.shape)
-            final_score = final_map[idx]
+            loss = self.criteria(lightings, rec_lightings)
+            self.cls_rec_loss += loss.item()
+            final_map = torch.sum(torch.abs(lightings - rec_lightings), dim=1)
 
-        H, W = final_map.size()
-        final_map = final_map.view(1, 1, H, W)
-        final_map = torch.nn.functional.interpolate(final_map, size=(self.image_size, self.image_size), mode='bilinear', align_corners=False)
+            if(self.score_type == 0):
+                final_map, final_score, img = self.compute_max_smap(final_map, lightings)
+            elif(self.score_type == 1):
+                final_map, final_score, img = self.compute_mean_smap(final_map, lightings)
+    
+        
         # final_map = self.blur(final_map)
         img = rec_lightings[5]
         # self.cls_rec_loss += loss.item()
@@ -203,8 +207,7 @@ class Diffusion_Rec(Diffusion_Method):
         self.image_list.append(t2np(img))
         self.pixel_preds.append(t2np(final_map))
         self.pixel_labels.extend(t2np(gt))
-        if item % 2 == 0:
-            display_image(lightings, rec_lightings, self.reconstruct_path, item)
+        display_image(lightings, rec_lightings, self.reconstruct_path, item)
         
 class ControlNet_Rec(Diffusion_Method):
     def __init__(self, args, cls_path):
@@ -292,10 +295,14 @@ class ControlNet_Rec(Diffusion_Method):
         if item % 2 == 0:
             display_image(t2np(lightings), t2np(rec_lightings), self.reconstruct_path, item)
 
-class DDIM_Rec(Diffusion_Method):
+class DDIMInv_Rec(Diffusion_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
-        self.guidance_scale = 7.5
+        self.guidance_scale = args.guidance_scale
+        self.num_inner_steps = args.num_opt_steps
+        self.opt_max_steps = args.opt_max_steps
+        print("num optimize steps:", self.num_inner_steps)
+        print("guidance scale:", self.guidance_scale)
         self.init_prompt()
         
     def prev_step(self, model_output: Union[torch.FloatTensor, np.ndarray], timestep: int, sample: Union[torch.FloatTensor, np.ndarray]):
@@ -341,15 +348,15 @@ class DDIM_Rec(Diffusion_Method):
         uncond_embeddings = self.get_text_embedding("", 6)
         self.text_normal_embeddings = self.get_text_embedding("normal", 6)
         self.context = torch.cat([uncond_embeddings, self.text_normal_embeddings])
-        print(self.context.shape)
+        # print(self.context.shape)
         
     @torch.no_grad()
     def ddim_loop(self, latent):
         # uncond_embeddings, cond_embeddings = self.context.chunk(2)
         all_latent = [latent]
         latent = latent.clone().detach()
-        for i in range(NUM_DDIM_STEPS):
-            t = self.noise_scheduler.timesteps[len(self.noise_scheduler.timesteps) - i - 1]
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        for t in reversed(self.timesteps_list):
             noise_pred = self.get_noise_pred_single(latent, t, self.text_normal_embeddings)
             latent = self.next_step(noise_pred, t, latent)
             all_latent.append(latent)
@@ -359,58 +366,57 @@ class DDIM_Rec(Diffusion_Method):
     def scheduler(self):
         return self.noise_scheduler
 
-    @torch.no_grad()
-    def ddim_inversion(self, image):
-        latent = self.image2latents(image)
-        image_rec = self.latents2image(latent)
-        ddim_latents = self.ddim_loop(latent)
-        return image_rec, ddim_latents
-
-    def null_optimization(self, latents, num_inner_steps, epsilon):
+    def null_optimization(self, latents, epsilon):
         uncond_embeddings, cond_embeddings = self.context.chunk(2)
         uncond_embeddings_list = []
         latent_cur = latents[-1]
-        # print("null_optimize_uncondition embedd", uncond_embeddings.shape)
-        bar = tqdm(total=num_inner_steps * NUM_DDIM_STEPS)
-        for i in range(NUM_DDIM_STEPS):
+        num_ddim_loop = len(self.timesteps_list)
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        for i, t in enumerate(self.timesteps_list):
             uncond_embeddings = uncond_embeddings.clone().detach()
             uncond_embeddings.requires_grad = True
-            optimizer = Adam([uncond_embeddings], lr=1e-2 * (1. - i / 100.))
+            optimizer = Adam([uncond_embeddings], lr=1e-2 * (1. - i / (num_ddim_loop * 2)))
             latent_prev = latents[len(latents) - i - 2]
-            t = self.noise_scheduler.timesteps[i]
+            # mean_uncond = torch.mean(uncond_embeddings, dim=0)
+            # mean_uncond = mean_uncond.repeat((6, 1, 1))
             with torch.no_grad():
                 noise_pred_cond = self.get_noise_pred_single(latent_cur, t, cond_embeddings)
-            for j in range(num_inner_steps):
+            for j in range(self.num_inner_steps):
                 noise_pred_uncond = self.get_noise_pred_single(latent_cur, t, uncond_embeddings)
                 noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
                 latents_prev_rec = self.prev_step(noise_pred, t, latent_cur)
-                loss = nnf.mse_loss(latents_prev_rec, latent_prev)
+
+                # dev_loss = nnf.mse_loss(mean_uncond, uncond_embeddings)
+                # print("dev loss:", dev_loss)
+                latent_loss = nnf.mse_loss(latents_prev_rec, latent_prev)
+                # print("latent_loss:", latent_loss)
+                # print(mean_uncond)
+                # print(dev_loss)
+                loss = latent_loss #+ dev_loss
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 loss_item = loss.item()
-                bar.update()
                 if loss_item < epsilon + i * 2e-5:
                     break
-            for j in range(j + 1, num_inner_steps):
-                bar.update()
+
             # print("null_optimize_uncondition embedd", uncond_embeddings.shape)
             uncond_embeddings_list.append(uncond_embeddings.detach())
             with torch.no_grad():
                 context = torch.cat([uncond_embeddings, cond_embeddings])
                 latent_cur = self.get_noise_pred(latent_cur, t, False, context)
-        bar.close()
+        # bar.close()
         return uncond_embeddings_list
 
-    def invert(self, image_gt, num_inner_steps=2, early_stop_epsilon=1e-5, verbose=False):
+    def invert(self, latents, early_stop_epsilon=1e-5, verbose=False):
         # register_attention_control(self.model, None)
         if verbose:
             print("DDIM inversion...")
-        image_rec, ddim_latents = self.ddim_inversion(image_gt)
+        ddim_latents = self.ddim_loop(latents)
         if verbose:
             print("Null-text optimization...")
-        uncond_embeddings = self.null_optimization(ddim_latents, num_inner_steps, early_stop_epsilon)
-        return image_rec, ddim_latents[-1], uncond_embeddings
+        uncond_embeddings = self.null_optimization(ddim_latents, early_stop_epsilon)
+        return ddim_latents[-1], uncond_embeddings
     
     def reconstruction(
         self,
@@ -419,12 +425,13 @@ class DDIM_Rec(Diffusion_Method):
     ):
         # latent, latents = init_latent(latent, model, height, width, generator, batch_size)
         self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
-        
+        # print("input", noisy_latents.shape)
         for i, t in enumerate(self.timesteps_list):
             timesteps = torch.tensor(t.item(), device=self.device)
-            context = torch.cat([uncond_embeddings[i].expand(*self.text_normal_embeddings.shape), self.text_normal_embeddings])
+            context = torch.cat([uncond_embeddings[i], self.text_normal_embeddings])
+            latents_input = torch.cat([noisy_latents] * 2)
             noise_pred = self.unet(
-                noisy_latents,
+                latents_input,
                 timesteps,
                 encoder_hidden_states=context,
             ).sample
@@ -433,45 +440,44 @@ class DDIM_Rec(Diffusion_Method):
             noisy_latents = self.noise_scheduler.step(noise_pred, t.item(), noisy_latents)["prev_sample"]
         return noisy_latents
     
-    def predict(self, item, lightings, nmaps, gt, label):
+    def predict(self, item, lightings, nmaps, text_prompt, gt, label):
         lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [6, 3, 256, 256]
-        #fc_lightings = self.get_FC_lightings(lightings)
-        # nmaps = nmaps.to(self.device).repeat_interleave(6, dim=0) # [6, 3, 256, 256]
-        # with torch.no_grad():
-        # latents = self.image2latents(lightings)
-        # ddim_latents = self.ddim_loop(latents) 
-        # uncond_embeddings = self.null_optimization(ddim_latents, 2, 1e-5)
-        image_rec, ddim_latent, uncond_embeddings = self.invert(lightings)
-        rec_latent = self.reconstruction(ddim_latent[-1], uncond_embeddings)
-        # print(uncond_embeddings)
-        # with torch.no_grad():
-        #     rec_latents = self.reconstruction(ddim_latent, uncond_embeddings)
-        #     rec_images = self.latents2image(rec_latents)
+        
+        with torch.no_grad():
+            latents = self.image2latents(lightings)
+        
+        ddim_latent, uncond_embeddings = self.invert(latents)
+        # print(ddim_latent.shape)
+        with torch.no_grad():
+            rec_latents = self.reconstruction(ddim_latent, uncond_embeddings)
+            sampled_images = self.latents2image(rec_latents)
             
-        # latents = latents.permute(0, 2, 3, 1)
-        # rec_latents = rec_latents.permute(0, 2, 3, 1)
-        # final_map = self.pdist(latents, rec_latents)
+        latents = latents.permute(0, 2, 3, 1)
+        rec_latents = rec_latents.permute(0, 2, 3, 1)
+        final_map = self.pdist(latents, rec_latents)
+        
+        if self.score_type == 0:
+            final_map = torch.mean(final_map, dim=0)
+            final_score = torch.max(final_map)
+        else:
+            final_map, idx = torch.max(final_map, dim=0)
+            # print(s_map_size28.shape)
+            final_score = final_map[idx]
 
-        # if self.score_type == 0:
-        #     final_map = torch.mean(final_map, dim=0)
-        #     final_score = torch.max(final_map)
-        # else:
-        #     final_map, idx = torch.max(final_map, dim=0)
-        #     # print(s_map_size28.shape)
-        #     final_score = final_map[idx]
+        H, W = final_map.size()
+        final_map = final_map.view(1, 1, H, W).cpu()
+        
+        final_map = torch.nn.functional.interpolate(final_map, size=(self.image_size, self.image_size), mode='bilinear', align_corners=False)
+        final_map = self.blur(final_map)
+        img = lightings[5]
+        # self.cls_rec_loss += loss.item()
+        self.image_labels.append(label)
+        self.image_preds.append(t2np(final_score))
+        self.image_list.append(t2np(img))
+        self.pixel_preds.append(t2np(final_map))
+        self.pixel_labels.extend(t2np(gt))
 
-        # H, W = final_map.size()
-        # final_map = final_map.view(1, 1, H, W)
-        # final_map = torch.nn.functional.interpolate(final_map, size=(self.image_size, self.image_size), mode='bilinear', align_corners=False)
-        # img = lightings[5]
-        # # self.cls_rec_loss += loss.item()
-        # self.image_labels.append(label)
-        # self.image_preds.append(t2np(final_score))
-        # self.image_list.append(t2np(img))
-        # self.pixel_preds.append(t2np(final_map))
-        # self.pixel_labels.extend(t2np(gt))
-
-        # display_image(lightings, rec_images, self.reconstruct_path, item)
+        display_image(lightings, sampled_images, self.reconstruct_path, item)
     
 # class DDIM_Rec(Diffusion_Method):
 #     def __init__(self, args, cls_path):

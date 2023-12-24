@@ -6,6 +6,7 @@ from torchvision import transforms
 from tqdm import tqdm
 from utils.au_pro_util import calculate_au_pro
 from utils.visualize_util import *
+from utils.utils import KNNGaussianBlur
 from sklearn.metrics import roc_auc_score
 
 
@@ -32,7 +33,7 @@ class Base_Method():
                 
         # Load vae model
         
-        
+        self.blur = KNNGaussianBlur()
         # AE = Autoencoder(self.device)
         # AE.load_state_dict(torch.load(args.load_vae_ckpt_path, map_location=self.device)['model'])
         # self.vae = AE.vae

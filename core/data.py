@@ -99,7 +99,7 @@ class TestLightings(BaseDataset):
         img_path, gt = self.data_paths[idx], self.gt_paths[idx]
         rgb_path = img_path[0]
         normal_path = img_path[1]
-
+        text_prompt = "a photo of a " + self.cls
         normal = Image.open(normal_path).convert('RGB')
         
         normal_map = self.rgb_transform(normal)
@@ -119,7 +119,7 @@ class TestLightings(BaseDataset):
             gt = self.gt_transform(gt)
             gt = torch.where(gt > 0.5, 1., .0)
             label = 0
-        return (images, normal_map), gt[:1], label
+        return (images, normal_map, text_prompt), gt[:1], label
 
 # not use
 class MemoryLightings(BaseDataset):
@@ -129,7 +129,7 @@ class MemoryLightings(BaseDataset):
 
     def load_dataset(self):
         data_tot_paths = []
-
+    
         rgb_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_image_*.png")
         normal_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_normals.png")
         depth_paths = glob.glob(os.path.join(self.img_path, 'data') + "/*_depth.png")
@@ -158,7 +158,7 @@ class MemoryLightings(BaseDataset):
         img_path = self.data_paths[idx]
         rgb_path = img_path[0]
         normal_path = img_path[1]
-
+        text_prompt = "a photo of a " + self.cls 
         normal = Image.open(normal_path).convert('RGB')
         
         normal_map = self.rgb_transform(normal)
@@ -170,7 +170,7 @@ class MemoryLightings(BaseDataset):
             # img = img * mask
             images.append(img)
         images = torch.stack(images)
-        return images, normal_map
+        return images, normal_map, text_prompt
 
 # load training image   
 class TrainLightings(Dataset):
@@ -180,6 +180,7 @@ class TrainLightings(Dataset):
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
         transforms.ToTensor(),
         ])
+        self.cls_list = []
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
@@ -194,7 +195,8 @@ class TrainLightings(Dataset):
             rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data', "*_image_*.png")))
             normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
             depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_depth.png"))
-        
+            self.cls_list.extend([cls] * 1000)
+
         rgb_paths.sort()
         normal_paths.sort()     
         depth_paths.sort()
@@ -218,7 +220,8 @@ class TrainLightings(Dataset):
 
     def __getitem__(self, idx):
         img_path, label = self.data_paths[idx], self.labels[idx]
-
+        cls = self.cls_list[idx]
+        text_prompt = "a photo of a " + cls
         rgb_path = img_path[0]
         images = []
         # noise_images = []
@@ -235,7 +238,7 @@ class TrainLightings(Dataset):
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
-        return images, nmap
+        return images, nmap, text_prompt
 
 # load validation image using for training 
 class ValLightings(Dataset):
@@ -245,6 +248,7 @@ class ValLightings(Dataset):
         [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
         transforms.ToTensor(),
         ])
+        self.cls_list = []
         self.img_path = dataset_path
         self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
@@ -259,7 +263,7 @@ class ValLightings(Dataset):
             rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data', "*_image_*.png")))
             normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
             depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_depth.png"))
-        
+            self.cls_list.extend([cls] * 1000)
         rgb_paths.sort()
         normal_paths.sort()     
         depth_paths.sort()
@@ -283,7 +287,8 @@ class ValLightings(Dataset):
 
     def __getitem__(self, idx):
         img_path, label = self.data_paths[idx], self.labels[idx]
-
+        cls = self.cls_list
+        text_prompt = "a photo of a " + cls
         rgb_path = img_path[0]
         images = []
         # noise_images = []
@@ -299,7 +304,7 @@ class ValLightings(Dataset):
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
-        return images, nmap
+        return images, nmap, text_prompt
 
 # load training normal map
 class TrainNmap(Dataset):

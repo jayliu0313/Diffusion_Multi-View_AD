@@ -15,7 +15,7 @@ parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datas
 parser.add_argument('--output_dir', default="./output")
 parser.add_argument('--dataset_type', default="eyecandies")
 parser.add_argument('--batch_size', default=1, type=int)
-parser.add_argument('--image_size', default=224, type=int)
+parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument("--workers", default=4)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 
@@ -27,7 +27,7 @@ parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1
 # parser.add_argument('--load_vae_ckpt_path', type=str, default="./checkpoints/rgb_checkpoints/pretrained_VAE_FCFU/best_ckpt.pth")
 parser.add_argument("--load_vae_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/vae_stable-diffusion-v1-4_woDecomp/vae_decomp_best_ckpt.pth")
 parser.add_argument("--load_decomp_ckpt", default=None)
-parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/PretrainVAE_DiffusionV1-4_TextPromptAnomalyNormal_prb05_scale0.5/best_unet_ckpt.pth")   #"/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_InputImage_TextNull_woTrainVae/best_unet.pth"
+parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_vaefinetune_clsprb01free_3cls_clstextprompt/best_unet_ckpt.pth")
 
 parser.add_argument('--load_controlnet_ckpt', type=str, default=None)
 parser.add_argument("--load_backbone_ckpt", default=None)
@@ -37,24 +37,34 @@ parser.add_argument('--backbone_name', default="vit_base_patch8_224_dino")
 # Unet Model (Diffusion Model)
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
-parser.add_argument("--noise_intensity", type=int, default=50)
-parser.add_argument("--step_size", type=int, default=5)
+parser.add_argument("--noise_intensity", type=int, default=1000)
+parser.add_argument("--step_size", type=int, default=20)
+parser.add_argument("--opt_max_steps", type=int, default=1000)
 
-
+# 1000, 20, 7.5, 3
+DEBUG = False
 # Controlnet Model Setup
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
 parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
 
+# DDIM Rec Setup
+parser.add_argument("--num_opt_steps", type=int, default=0)
+parser.add_argument("--guidance_scale", type=float, default=1)
 
 
 args = parser.parse_args()
+if DEBUG == True:
+    FILE_NAME = "Testing"
+else:
+    FILE_NAME = f"_NULLInv_noise{args.noise_intensity}_step{args.step_size}_loop{args.num_opt_steps}_gdscale{args.guidance_scale}"
+
 cuda_idx = str(args.CUDA)
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= cuda_idx
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("current device", device)
 time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-args.output_dir = os.path.join(args.output_dir, time)
+args.output_dir = os.path.join(args.output_dir, time) + FILE_NAME
 if not os.path.exists(args.output_dir):
     os.makedirs(args.output_dir)
 
@@ -62,10 +72,10 @@ def run_eyecandies(args):
     if args.dataset_type=='eyecandies':
         classes = [
         'CandyCane',
-        # 'ChocolateCookie',
+        'ChocolateCookie',
         # 'ChocolatePraline',
         # 'Confetto',
-        # 'GummyBear',
+        'GummyBear',
         # 'HazelnutTruffle',
         # 'LicoriceSandwich',
         # 'Lollipop',

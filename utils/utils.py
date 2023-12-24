@@ -16,10 +16,9 @@ def t2np(tensor):
 class KNNGaussianBlur(torch.nn.Module):
     def __init__(self, radius : int = 4):
         super().__init__()
-        self.radius = radius
         self.unload = transforms.ToPILImage()
         self.load = transforms.ToTensor()
-        self.blur_kernel = ImageFilter.GaussianBlur(radius=4)
+        self.blur_kernel = ImageFilter.GaussianBlur(radius=radius)
 
     def __call__(self, img):
         map_max = img.max()
