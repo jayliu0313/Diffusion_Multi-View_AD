@@ -20,7 +20,7 @@ matplotlib.use('Agg')
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_woDecomp_allcls")
+parser.add_argument('--ckpt_path', default="checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_allcls")
 # parser.add_argument('--diffusion_id', default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--load_vae_ckpt", default=None)
 parser.add_argument("--load_decom_ckpt", default=None)
@@ -32,7 +32,7 @@ parser.add_argument('--val_every', default=3, type=int)
 parser.add_argument("--rand_weight", default=0.3, type=float)
 parser.add_argument("--training_mode", default="fuse_fc", help="traing type: mean, fuse_fc, fuse_both, random_both")
 parser.add_argument("--model", default="Masked_Conv", help="traing type: Conv, Conv_Ins, Masked_Conv")
-parser.add_argument("--learning_rate", default=1e-5)
+parser.add_argument("--learning_rate", default=5e-5)
 parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 parser.add_argument("--workers", default=6)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
@@ -115,14 +115,16 @@ class Train_VAE_DecompBlock():
     #         print("load adapter ckpt from", decomp_ckpt)
             
     def image2latents(self, x):
-        x = x.float() * 2.0 - 1.0
-        latents = self.vae.encode(x).latent_dist.sample()
-        latents = latents * 0.18215
+        with torch.no_grad():
+            x = x.float() * 2.0 - 1.0
+            latents = self.vae.encode(x).latent_dist.sample()
+            latents = latents * 0.18215
         return latents
     
     def latents2image(self, latents):
         latents = 1 / 0.18215 * latents
         rec_image = self.vae.decode(latents).sample
+        rec_image = rec_image.clamp(-1, 1)
         return rec_image
     
     def log_validation(self):
@@ -225,7 +227,6 @@ class Train_VAE_DecompBlock():
                     model_path = args.ckpt_path + f'/vae_best_ckpt.pth'
                     state_dict = {
                         'vae': self.vae.state_dict(),
-                        # 'decomp_block': self.decomp_block.state_dict(),
                         'current_iteration': self.epoch,
                         'optimizer_state_dict': optimizer.state_dict(),
                     }

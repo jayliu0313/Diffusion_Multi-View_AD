@@ -20,15 +20,20 @@ parser.add_argument("--workers", default=4)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 
 # Method choose
-parser.add_argument('--method_name', default="ddim_rec", help="vae_rec, controlnet_rec, ddim_rec, diffusion_rec, rgb_nmap_rec, nmap_repair, nmap_rec, memory")
+parser.add_argument('--method_name', default="ddiminv_memory", help="vae_rec, controlnet_rec, ddim_rec, ddiminv_rec, rgb_nmap_rec, nmap_repair, nmap_rec, memory, ddim_memory, ddiminv_memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 
 #### Load Checkpoint ####
-# parser.add_argument('--load_vae_ckpt_path', type=str, default="./checkpoints/rgb_checkpoints/pretrained_VAE_FCFU/best_ckpt.pth")
-parser.add_argument("--load_vae_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/vae_stable-diffusion-v1-4_woDecomp/vae_decomp_best_ckpt.pth")
+parser.add_argument("--load_vae_ckpt", default=None)
+# "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/train_VAE_stable-diffusion-v1-4_woDecomp_allcls/vae_best_ckpt.pth"
+# "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/vae_stable-diffusion-v1-4_woDecomp/vae_decomp_best_ckpt.pth"
 parser.add_argument("--load_decomp_ckpt", default=None)
-parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_vaefinetune_clsprb01free_3cls_clstextprompt/best_unet_ckpt.pth")
 
+parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_NullText_FeatureLossAllLayer_AllCls/best_unet.pth")
+# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_NullText_FeatureLossAllLayer_AllCls/best_unet.pth"
+# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/trainUnet_vaefinetune_clsprb01free_mormalprompt_allcls/best_unet_ckpt.pth"
+# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_vaefinetune_clsfree_3cls/best_unet_ckpt.pth"
+# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/unet_vaefinetune_clsprb01free_3cls_clstextprompt/best_unet_ckpt.pth"
 parser.add_argument('--load_controlnet_ckpt', type=str, default=None)
 parser.add_argument("--load_backbone_ckpt", default=None)
 parser.add_argument('--load_nmap_ckpt_path', default=None)
@@ -37,9 +42,16 @@ parser.add_argument('--backbone_name', default="vit_base_patch8_224_dino")
 # Unet Model (Diffusion Model)
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
-parser.add_argument("--noise_intensity", type=int, default=1000)
+
+parser.add_argument("--memory_noise_intensity", type=int, default=1)
+parser.add_argument("--noise_intensity", type=int, default=81)
 parser.add_argument("--step_size", type=int, default=20)
+
+
+# DDIM Inv Setup
 parser.add_argument("--opt_max_steps", type=int, default=1000)
+parser.add_argument("--num_opt_steps", type=int, default=3)
+parser.add_argument("--guidance_scale", type=float, default=7.5)
 
 # 1000, 20, 7.5, 3
 DEBUG = False
@@ -47,17 +59,16 @@ DEBUG = False
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
 parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
 
-# DDIM Rec Setup
-parser.add_argument("--num_opt_steps", type=int, default=0)
-parser.add_argument("--guidance_scale", type=float, default=1)
 
 
 args = parser.parse_args()
 if DEBUG == True:
     FILE_NAME = "Testing"
 else:
-    FILE_NAME = f"_NULLInv_noise{args.noise_intensity}_step{args.step_size}_loop{args.num_opt_steps}_gdscale{args.guidance_scale}"
-
+    # FILE_NAME = "ddiminv_unet_4thlayers_noise1_textpromptnormal"
+    # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_loop{args.num_opt_steps}_gdscale{args.guidance_scale}_clsprompt"
+    FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_FeatureLoss"
+    
 cuda_idx = str(args.CUDA)
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= cuda_idx
@@ -73,14 +84,14 @@ def run_eyecandies(args):
         classes = [
         'CandyCane',
         'ChocolateCookie',
-        # 'ChocolatePraline',
-        # 'Confetto',
+        'ChocolatePraline',
+        'Confetto',
         'GummyBear',
-        # 'HazelnutTruffle',
-        # 'LicoriceSandwich',
-        # 'Lollipop',
-        # 'Marshmallow',
-        # 'PeppermintCandy'
+        'HazelnutTruffle',
+        'LicoriceSandwich',
+        'Lollipop',
+        'Marshmallow',
+        'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = []
@@ -93,7 +104,7 @@ def run_eyecandies(args):
     rec_loss_df = pd.DataFrame(METHOD_NAMES, columns=['Method'])
     for cls in classes:
         runner = Runner(args, cls)
-        if args.method_name == "memory":
+        if args.method_name == "memory" or args.method_name == "ddim_memory" or args.method_name == "ddiminv_memory":
             runner.fit()
         image_rocaucs, pixel_rocaucs, au_pros, rec_loss = runner.evaluate()
         image_rocaucs_df[cls.title()] = image_rocaucs_df['Method'].map(image_rocaucs)

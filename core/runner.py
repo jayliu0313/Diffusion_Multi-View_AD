@@ -1,8 +1,7 @@
 from core.data import test_lightings_loader
 from core.reconstruct_method import Nmap_Repair, Nmap_Rec, RGB_Nmap_Rec, Vae_Rec
-from core.diffuision_method import ControlNet_Rec, Diffusion_Rec, DDIMInv_Rec
+from core.diffuision_method import ControlNet_Rec, DDIM_Rec, DDIMInv_Rec, DDIM_Memory, DDIMInv_Memory
 from core.memory_method import Memory_Method
-from core.ddim_memory_method import DDIM_Memory
 from tqdm import tqdm
 import torch
 import os
@@ -29,10 +28,12 @@ class Runner():
             self.method = Vae_Rec(args, cls_path)
         elif args.method_name == "controlnet_rec":
             self.method = ControlNet_Rec(args, cls_path)
-        elif args.method_name == "diffusion_rec":
-            self.method = Diffusion_Rec(args, cls_path)
+        elif args.method_name == "ddim_rec":
+            self.method = DDIM_Rec(args, cls_path)
         elif args.method_name == "ddiminv_rec":
             self.method = DDIMInv_Rec(args, cls_path)
+        elif args.method_name == "ddiminv_memory":
+            self.method = DDIMInv_Memory(args, cls_path)
         # elif args.method_name == "mean_rec":
         #     self.method = Mean_Rec(args, cls_path)
         # elif args.method_name == "rec":
@@ -47,7 +48,7 @@ class Runner():
         dataloader = test_lightings_loader(self.args, self.cls, "memory")
         with torch.no_grad():
             for i, (lightings, _, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
-                # if i == 5:
+                # if i == 100:
                 #     break
                 self.method.add_sample_to_mem_bank(lightings, text_prompt)
       
@@ -55,11 +56,11 @@ class Runner():
 
     def evaluate(self):
         dataloader = test_lightings_loader(self.args, self.cls, "test")
-        
-        for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader)):
-            # if i == 5:
-            #     break
-            self.method.predict(i, images, nmap, text_prompt, gt, label)
+        with torch.no_grad():
+            for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader)):
+                # if i == 5:
+                #     break
+                self.method.predict(i, images, nmap, text_prompt, gt, label)
 
         image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics()
         total_rec_loss = self.method.get_rec_loss()

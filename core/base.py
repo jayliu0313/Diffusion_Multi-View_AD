@@ -17,34 +17,14 @@ IMAGENET_STD = [0.229, 0.224, 0.225]
 class Base_Method():
     def __init__(self, args, cls_path):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.load_model(args.rgb_ckpt_path, args.nmap_ckpt_path)
         self.initialize_score()
-
-        # if args.load_decomp_ckpt is not None:
-        #     checkpoint_dict = torch.load(args.load_decomp_ckpt, map_location=self.device)
-        #     # Load VAE checkpoint  
-        #     if checkpoint_dict['backbone'] is not None:
-        #         print("load vae checkpoints!")
-        #         self.vae.load_state_dict(checkpoint_dict['backbone'])
-
-            # if  checkpoint_dict['decomp_block'] is not None:
-            #     print("load decomp checkpoints!")
-            #     self.decomp_block.load_state_dict(checkpoint_dict['decomp_block'])
-                
+        
         # Load vae model
         
         self.blur = KNNGaussianBlur()
-        # AE = Autoencoder(self.device)
-        # AE.load_state_dict(torch.load(args.load_vae_ckpt_path, map_location=self.device)['model'])
-        # self.vae = AE.vae
-        # self.decomp_block = AE.decomp_block
 
-        # self.vae.requires_grad_(False)
-
-        
-        
         self.criteria = torch.nn.MSELoss()    
-        # self.fc_dim = args.common_feature_dim
+        
         self.patch_lib = []
         self.image_size = args.image_size
         
@@ -116,23 +96,4 @@ class Base_Method():
         gt_mask = np.squeeze(np.array(self.pixel_labels, dtype=np.bool), axis=1)
         
         visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, self.cls_path)
-        
-        
-    # def load_model(self, rgb_ckpt_path=None, nmap_ckpt_path=None):
-    #     if nmap_ckpt_path != None:
-    #         print("Load the checkpoint of normal map model...")
-    #         self.nmap_model = NMap_AE(self.device)
-    #         self.nmap_model.to(self.device)
-    #         self.nmap_model.eval()
-    #         checkpoint = torch.load(nmap_ckpt_path, map_location=self.device)
-    #         self.nmap_model.load_state_dict(checkpoint['model'])
-    #         self.nmap_model.freeze_model()
-    #     if rgb_ckpt_path != None:
-    #         print("Load the checkpoint of rgb model...")
-    #         self.rgb_model = Autoencoder(self.device)
-    #         self.rgb_model.to(self.device)
-    #         self.rgb_model.eval()
-    #         checkpoint = torch.load(rgb_ckpt_path, map_location=self.device)
-    #         self.rgb_model.load_state_dict(checkpoint['model'])
-    #         self.rgb_model.freeze_model()
     

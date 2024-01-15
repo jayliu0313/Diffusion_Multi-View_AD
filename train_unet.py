@@ -9,11 +9,11 @@ from core.data import train_lightings_loader, val_lightings_loader
 
 import torch.nn.functional as F
 from transformers import CLIPTextModel, AutoTokenizer
-from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler
+from core.models.unet_model import MyUNet2DConditionModel
+
 from diffusers.optimization import get_scheduler
-from core.models.controllora import ControlLoRAModel
 from core.models.autoencoder import Autoencoder
-from core.models.network_util import Decom_Block
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg') 
@@ -21,30 +21,15 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/controlnet_model/")
-parser.add_argument("--load_vae_ckpt", default="/mnt/home_6T/public/jayliu0313/mil_test/checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_meanfcloss_probchangefcfu/best_vae_ckpt.pth")
-parser.add_argument("--load_decom_ckpt", default="/mnt/home_6T/public/jayliu0313/mil_test/checkpoints/rgb_checkpoints/train_VAE_stable-diffusion-v1-4_meanfcloss_probchangefcfu/best_decomp_ckpt.pth")
+parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainUNet_NullText_FeatureLossAllLayer_3CLS_woVAE")
+parser.add_argument('--load_vae_ckpt', default=None)
 parser.add_argument('--image_size', default=256, type=int)
-parser.add_argument('--batch_size', default=2, type=int)
-parser.add_argument("--save_epoch", type=int, default=3)
+parser.add_argument('--batch_size', default=1, type=int)
 
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
-parser.add_argument("--controlnet_id", type=str, default=None)
-parser.add_argument(
-        "--controllora_linear_rank",
-        type=int,
-        default=4,
-        help=("The dimension of the Linear Module LoRA update matrices."),
-    )
-parser.add_argument(
-        "--controllora_conv2d_rank",
-        type=int,
-        default=0,
-        help=("The dimension of the Conv2d Module LoRA update matrices."),
-    )
 
 # Training Setup
 parser.add_argument("--learning_rate", default=5e-6)
@@ -53,7 +38,7 @@ parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 par
 parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
 parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
 parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer")
-parser.add_argument("--workers", default=6)
+parser.add_argument("--workers", default=4)
 parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CUDA")
 parser.add_argument("--lr_scheduler", type=str, default="constant", help=('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'' "constant", "constant_with_warmup"]'),)
 parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
@@ -78,7 +63,7 @@ def export_loss(save_path, loss_list):
     plt.close("all")
 
 
-class TrainUnet():
+class trainControlnet():
     def __init__(self, args, device):
 
         self.device = device
@@ -98,30 +83,30 @@ class TrainUnet():
         self.text_encoder = CLIPTextModel.from_pretrained(args.diffusion_id, subfolder="text_encoder")
         self.noise_scheduler = DDPMScheduler.from_pretrained(args.diffusion_id, subfolder="scheduler")
 
-        # Load vae model
         self.vae = AutoencoderKL.from_pretrained(
-                    args.diffusion_id,
-                    subfolder="vae",
-                    revision=args.revision,
-                    torch_dtype=torch.float32
-                )
-        # self.decomp_block = Decom_Block(4)
-        
-        self.unet = UNet2DConditionModel.from_pretrained(
+            args.diffusion_id,
+            subfolder="vae",
+            revision=args.revision,
+        ).to(self.device)
+        # if args.load_vae_ckpt is not None:
+        #     print("Load pretrained VAE checkpoint from:", args.load_vae_ckpt)
+        #     self.vae.load_state_dict(torch.load(args.load_vae_ckpt, map_location=self.device)['vae'])
+            
+        self.vae.requires_grad_(False)
+
+        self.unet = MyUNet2DConditionModel.from_pretrained(
                 args.diffusion_id,
                 subfolder="unet",
                 revision=args.revision)
 
+
         self.vae.requires_grad_(False)
-        self.text_encoder.requires_grad_(False)
         self.unet.requires_grad_(True)
+        self.text_encoder.requires_grad_(False)
 
         self.vae.to(self.device)
         self.unet.to(self.device)
         self.text_encoder.to(self.device)
-
-        # Get CLIP embeddings
-        self.encoder_hidden_states = self.get_text_embedding([""], self.bs * 6) # [bs * 6, 77, 768]
 
         # Optimizer creation
         self.optimizer = torch.optim.AdamW(
@@ -140,18 +125,21 @@ class TrainUnet():
             num_cycles=1,
             power=1.0,
         )
+        with torch.no_grad():
+            self.encoder_hidden_states = self.get_text_embedding("", self.bs * 6)
 
     def image2latents(self, x):
-        x = x * 2.0 - 1.0
-        latents = self.vae.encode(x).latent_dist.sample()
-        latents = latents * 0.18215
+        with torch.no_grad():
+            x = x * 2.0 - 1.0
+            latents = self.vae.encode(x).latent_dist.sample()
+            latents = latents * 0.18215
         return latents
     
     def latents2image(self, latents):
         latents = 1 / 0.18215 * latents
         image = self.vae.decode(latents).sample
         return image.clamp(-1, 1)
-    
+        
     def forward_process(self, x_0):
         noise = torch.randn_like(x_0) # Sample noise that we'll add to the latents
         bsz = x_0.shape[0]
@@ -166,34 +154,64 @@ class TrainUnet():
         text_embedding = self.text_encoder(tok.input_ids.to(self.device).repeat(bsz,1))[0]
         return text_embedding
 
-    def log_validation(self):
+    def log_validation(self, text_embedding):
         val_loss = 0.0
+        i = 0
         for lightings, nmaps in tqdm(self.val_dataloader, desc="Validation"):
-
+            # i+=1
+            # if i == 5:
+            #     break
             with torch.no_grad():
                 
                 lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
-                # nmaps = nmaps.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
-
+                
                 # Convert images to latent space
                 latents = self.image2latents(lightings)
-                
                 # Add noise to the latents according to the noise magnitude at each timestep
-                noise, timesteps, noisy_latents = self.forward_process(latents)
-
+                noise, timesteps, noisy_latents = self.forward_process(latents) 
+                
                 # Get CLIP embeddings
-                encoder_hidden_states = self.get_text_embedding(self.encoder_hidden_states, self.bs * 6) # [bs * 6, 77, 768]
-
+                 # [bs * 6, 77, 768]
                 # Training ControlNet
-                model_pred = self.unet(
+                
+                # Predict the noise from Unet
+                model_output = self.unet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=encoder_hidden_states,
-                ).sample
+                    encoder_hidden_states=self.encoder_hidden_states,
+                )
+                
+                pred_noise = model_output['sample']
+                unet_f_layer0 = model_output['up_ft'][0]
+                _, C, H, W = unet_f_layer0.shape
+                mean_unet_f_layer0 = torch.mean(unet_f_layer0.view(-1, 6, C, H, W), dim=1)
+                mean_unet_f_layer0 = mean_unet_f_layer0.repeat_interleave(6, dim=0)
 
-                loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
+                unet_f_layer1 = model_output['up_ft'][1]
+                _, C, H, W = unet_f_layer1.shape
+                mean_unet_f_layer1 = torch.mean(unet_f_layer1.view(-1, 6, C, H, W), dim=1)
+                mean_unet_f_layer1 = mean_unet_f_layer1.repeat_interleave(6, dim=0)   
+
+                unet_f_layer2 = model_output['up_ft'][2]
+                _, C, H, W = unet_f_layer2.shape
+                mean_unet_f_layer2 = torch.mean(unet_f_layer2.view(-1, 6, C, H, W), dim=1)
+                mean_unet_f_layer2 = mean_unet_f_layer2.repeat_interleave(6, dim=0)   
+
+                unet_f_layer3 = model_output['up_ft'][3]
+                _, C, H, W = unet_f_layer3.shape
+                mean_unet_f_layer3 = torch.mean(unet_f_layer3.view(-1, 6, C, H, W), dim=1)
+                mean_unet_f_layer3 = mean_unet_f_layer3.repeat_interleave(6, dim=0)  
+                
+                # Compute loss and optimize model parameter
+                feature_loss = F.l1_loss(mean_unet_f_layer0, unet_f_layer0, reduction="mean")
+                feature_loss += F.l1_loss(mean_unet_f_layer1, unet_f_layer1, reduction="mean")
+                feature_loss += F.l1_loss(mean_unet_f_layer2, unet_f_layer2, reduction="mean")
+                feature_loss += F.l1_loss(mean_unet_f_layer3, unet_f_layer3, reduction="mean")
+                Lambda = 0.01
+                # Compute loss and optimize model parameter
+                noise_loss = F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
+                loss = noise_loss + Lambda * feature_loss   
                 val_loss += loss.item()
-
                 
         val_loss /= len(self.val_dataloader)
         print('Validation Loss: {:.6f}'.format(val_loss))
@@ -209,29 +227,62 @@ class TrainUnet():
         for epoch in range(self.num_train_epochs):
 
             epoch_loss = 0.0
-            for lightings, _ in tqdm(self.train_dataloader, desc="Training"):
-
+            i = 0
+            for lightings, nmaps in tqdm(self.train_dataloader, desc="Training"):
+                # i+=1
+                # if i == 5:
+                #     break
                 self.optimizer.zero_grad()
                 lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
-                # nmaps = nmaps.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
                 
                 # Convert images to latent space
                 latents = self.image2latents(lightings)
                 # Add noise to the latents according to the noise magnitude at each timestep
                 noise, timesteps, noisy_latents = self.forward_process(latents) 
                 
+                
                 # Predict the noise from Unet
-                model_pred = self.unet(
+                model_output = self.unet(
                     noisy_latents,
                     timesteps,
                     encoder_hidden_states=self.encoder_hidden_states,
-                ).sample
+                )
+                
+                pred_noise = model_output['sample']
+                unet_f_layer0 = model_output['up_ft'][0]
+                _, C, H, W = unet_f_layer0.shape
+                mean_unet_f_layer0 = torch.mean(unet_f_layer0.view(-1, 6, C, H, W), dim=1)
+                mean_unet_f_layer0 = mean_unet_f_layer0.repeat_interleave(6, dim=0)
 
+                unet_f_layer1 = model_output['up_ft'][1]
+                _, C, H, W = unet_f_layer1.shape
+                mean_unet_f_layer1 = torch.mean(unet_f_layer1.view(-1, 6, C, H, W), dim=1)
+                mean_unet_f_layer1 = mean_unet_f_layer1.repeat_interleave(6, dim=0)   
+
+                unet_f_layer2 = model_output['up_ft'][2]
+                _, C, H, W = unet_f_layer2.shape
+                mean_unet_f_layer2 = torch.mean(unet_f_layer2.view(-1, 6, C, H, W), dim=1)
+                mean_unet_f_layer2 = mean_unet_f_layer2.repeat_interleave(6, dim=0)   
+
+                unet_f_layer3 = model_output['up_ft'][3]
+                _, C, H, W = unet_f_layer3.shape
+                mean_unet_f_layer3 = torch.mean(unet_f_layer3.view(-1, 6, C, H, W), dim=1)
+                mean_unet_f_layer3 = mean_unet_f_layer3.repeat_interleave(6, dim=0)  
+                
                 # Compute loss and optimize model parameter
-                loss = F.mse_loss(model_pred.float(), noise.float(), reduction="mean")
+                feature_loss = F.l1_loss(mean_unet_f_layer0, unet_f_layer0, reduction="mean")
+                feature_loss += F.l1_loss(mean_unet_f_layer1, unet_f_layer1, reduction="mean")
+                feature_loss += F.l1_loss(mean_unet_f_layer2, unet_f_layer2, reduction="mean")
+                feature_loss += F.l1_loss(mean_unet_f_layer3, unet_f_layer3, reduction="mean")
+                
+                Lambda = 0.01
+                # Compute loss and optimize model parameter
+                noise_loss = F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
+                loss = noise_loss + Lambda * feature_loss   
+                
                 loss.backward()
                 epoch_loss += loss.item()
-                nn.utils.clip_grad_norm_(self.controllora.parameters(), args.max_grad_norm)
+                nn.utils.clip_grad_norm_(self.unet.parameters(), args.max_grad_norm)
                 
                 self.optimizer.step()
                 self.lr_scheduler.step()
@@ -244,10 +295,10 @@ class TrainUnet():
             # save model
             if epoch % self.save_epoch == 0:
                 export_loss(args.ckpt_path + '/loss.png', loss_list)
-                val_loss = self.log_validation() # Evaluate
+                val_loss = self.log_validation(text_embedding=text_prompt) # Evaluate
                 if val_loss < val_best_loss:
                     val_best_loss = val_loss
-                    model_path = args.ckpt_path + f'/best_unet_ckpt.pth'
+                    model_path = args.ckpt_path + f'/best_unet.pth'
                     torch.save(self.unet.state_dict(), model_path)
                     print("### Save Model ###")
 
@@ -262,5 +313,5 @@ if __name__ == "__main__":
     if not os.path.exists(args.ckpt_path):
         os.makedirs(args.ckpt_path)
         
-    runner = TrainUnet(args=args, device=device)
+    runner = trainControlnet(args=args, device=device)
     runner.train()
