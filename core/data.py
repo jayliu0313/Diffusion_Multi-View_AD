@@ -99,8 +99,8 @@ class TestLightings(BaseDataset):
         img_path, gt = self.data_paths[idx], self.gt_paths[idx]
         rgb_path = img_path[0]
         normal_path = img_path[1]
-        # text_prompt = "a photo of a " + self.cls
-        text_prompt = ""
+        text_prompt = "a photo of a " + self.cls
+        # text_prompt = ""
         normal = Image.open(normal_path).convert('RGB')
         
         normal_map = self.rgb_transform(normal)
@@ -159,8 +159,8 @@ class MemoryLightings(BaseDataset):
         img_path = self.data_paths[idx]
         rgb_path = img_path[0]
         normal_path = img_path[1]
-        # text_prompt = "a photo of a " + self.cls 
-        text_prompt = ""
+        text_prompt = "a photo of a " + self.cls 
+        # text_prompt = ""
         normal = Image.open(normal_path).convert('RGB')
         
         normal_map = self.rgb_transform(normal)
@@ -385,10 +385,12 @@ class ValNmap(Dataset):
 def test_lightings_loader(args, cls, split):
     if split == 'memory':
         dataset = MemoryLightings(cls, args.image_size, args.data_path)
+        data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, drop_last=False,
+                                pin_memory=True)
     elif split == 'test':
         dataset = TestLightings(cls, args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, drop_last=False,
-                              pin_memory=True)
+        data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=False, num_workers=args.workers, drop_last=False,
+                                pin_memory=True)
     return data_loader
 
 def train_lightings_loader(args):

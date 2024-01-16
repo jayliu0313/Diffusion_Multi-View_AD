@@ -28,8 +28,7 @@ class Reconstruct_Method(Base_Method):
                 self.vae.load_state_dict(checkpoint_dict['vae'])
                 
         self.vae.requires_grad_(False)
-            
-        
+               
     def get_rgb_feature(self, image):
         image = self.image_transform(image)
         rgb_feature_maps = self.feature_extractor(image)
@@ -83,7 +82,7 @@ class Reconstruct_Method(Base_Method):
         topk_score, _ = torch.topk(final_map.flatten(), 25)
         final_score = torch.mean(topk_score)
         return final_map, final_score, img
-    
+
 class Nmap_Rec(Reconstruct_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
