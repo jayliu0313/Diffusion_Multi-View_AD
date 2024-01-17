@@ -4,6 +4,8 @@ from core.base import DDIM_Method
 from utils.utils import t2np
 from utils.visualize_util import display_one_img, display_image
 from core.models.controllora import  ControlLoRAModel
+from torch.optim.adam import Adam
+import torch.nn.functional as nnf
 
 from tqdm import tqdm
 from utils.ptp_utils import *
@@ -18,9 +20,12 @@ class Memory_Method(DDIM_Method):
     def compute_s_s_map(self, patch, feature_map_dims):
         self.patch_lib = self.patch_lib.to(self.device)
         dist = torch.cdist(patch, self.patch_lib)
- 
+        # print(self.patch_lib.shape)
         min_val, min_idx = torch.min(dist, dim=1)
-
+        # print(min_idx.shape)
+        # print(min_idx)
+        # a = self.patch_lib[min_idx]
+        
         s_star = torch.max(min_val)
         
         s_map = min_val.view(1, 1, *feature_map_dims)
@@ -219,8 +224,8 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
         self.f_coreset = 1.0
         self.coreset_eps = 0.9
         self.n_reweight = 3
-    
-    @torch.no_grad()    
+        self.optimize_loop = 5
+         
     def controlnet(self, noisy_latents, nmap, timestep, text_emb):
         down_block_res_samples, mid_block_res_sample = self.controllora(
             noisy_latents, timestep,
@@ -248,13 +253,41 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
             all_latents.append(latents)
         return all_latents
     
-    def get_unet_f(self, lightings, nmap, text_emb):    
+    def get_unet_f(self, lightings, nmap, text_emb, layer=3):    
         latents = self.image2latents(lightings)
         ddim_latents = self.ddim_loop(latents, nmap, text_emb)
         noisy_latents = ddim_latents[-1]
         timestep = self.timesteps_list[0]
         model_output = self.controlnet(noisy_latents, nmap, timestep, text_emb)
-        return model_output['up_ft']
+        return model_output['up_ft'][layer], noisy_latents
+    
+    def condition_optimization(self, unet_f, latent, nmap, text_embedding, epsilon=1e-5):
+        self.patch_lib = self.patch_lib.to(self.device)
+        dist = torch.cdist(unet_f, self.patch_lib)
+        # print(self.patch_lib.shape)
+        min_val, min_idx = torch.min(dist, dim=1)
+        memory_feature = self.patch_lib[min_idx]
+        
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+
+        opt_nmap = nmap.clone()
+        opt_nmap.requires_grad = True
+        optimizer = Adam([opt_nmap], lr=5e-4)
+    
+        # latent_prev = latents[len(latents) - i - 2]
+        for j in range(self.optimize_loop):
+            opt_unet_f = self.controlnet(latent, opt_nmap, self.timesteps_list[0], text_embedding)['up_ft'][3]
+            B, C, H, W = opt_unet_f.shape
+            opt_unet_f = torch.mean(opt_unet_f.view(-1, 6, C, H, W), dim=1)
+            opt_unet_f = opt_unet_f.reshape(C, -1).T
+            latent_loss = nnf.mse_loss(opt_unet_f, memory_feature)
+            print("latent_loss:", latent_loss)
+
+            loss = latent_loss #+ dev_loss
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            loss_item = loss.item()
         
     def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
         lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [B * 6, 3, 256, 256]
@@ -262,7 +295,7 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
         bsz = lightings.shape[0]
     
         encoder_hidden_states = self.get_text_embedding(text_prompt, bsz)
-        unet_f = self.get_unet_f(lightings, nmaps, encoder_hidden_states)[3]
+        unet_f, _ = self.get_unet_f(lightings, nmaps, encoder_hidden_states)
         B, C, H, W = unet_f.shape
         train_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1).squeeze(dim=1)
         train_unet_f = train_unet_f.permute((1, 0, 2, 3)).reshape(C, -1).T
@@ -271,14 +304,15 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
     def predict(self, i, lightings, nmap, text_prompt, gt, label):
         lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [6, 3, 256, 256]
         nmaps = nmap.to(self.device).repeat_interleave(6, dim=0) # [6, 3, 256, 256]
-
+        
         encoder_hidden_states = self.get_text_embedding(text_prompt, 6)
-        unet_f = self.get_unet_f(lightings, nmaps, encoder_hidden_states)[3]
+        unet_f, noisy_latents = self.get_unet_f(lightings, nmaps, encoder_hidden_states)
         
         B, C, H, W = unet_f.shape
         test_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1)
         test_unet_f = test_unet_f.reshape(C, -1).T
         
+        self.condition_optimization(test_unet_f, noisy_latents, nmaps, encoder_hidden_states)
         s, s_map = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
         self.image_list.append(t2np(lightings[5]))
         self.image_labels.append(label.numpy())

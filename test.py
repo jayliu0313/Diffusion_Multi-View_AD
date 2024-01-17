@@ -23,7 +23,7 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="ddiminv_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminv_memory, controlnet_ddiminv_memory")
+parser.add_argument('--method_name', default="controlnet_ddiminv_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminv_memory, controlnet_ddiminv_memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 
 #### Load Checkpoint ####
