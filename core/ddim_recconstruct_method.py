@@ -45,6 +45,18 @@ class Reconstruct_Method(DDIM_Method):
         final_score = torch.mean(topk_score)
         return final_map, final_score, img
 
+    @torch.no_grad()
+    def ddim_loop(self, latent, cond_embeddings):
+        # uncond_embeddings, cond_embeddings = self.context.chunk(2)
+        all_latent = [latent]
+        latent = latent.clone().detach()
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        for t in reversed(self.timesteps_list):
+            noise_pred = self.get_noise_pred_single(latent, t, cond_embeddings)
+            latent = self.next_step(noise_pred, t, latent)
+            all_latent.append(latent)
+        return all_latent
+    
 class DDIM_Rec(Reconstruct_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
@@ -71,7 +83,7 @@ class DDIM_Rec(Reconstruct_Method):
         latents = self.image2latents(lightings)
 
         # Add noise to the latents according to the noise magnitude at each timestep
-        print(self.timesteps_list[0])
+        # print(self.timesteps_list[0])
         _, _, rec_latents = self.forward_process_with_T(latents, self.timesteps_list[0].item()) 
         
         rec_lightings = self.latents2image(rec_latents)

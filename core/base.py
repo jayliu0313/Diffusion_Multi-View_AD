@@ -187,7 +187,7 @@ class DDIM_Method(Base_Method):
         return next_sample
     
     def get_noise_pred_single(self, latents, t, context):
-        noise_pred = self.unet(latents, t, encoder_hidden_states=context)["sample"]
+        noise_pred = self.unet(latents, t, encoder_hidden_states=context)['sample']
         return noise_pred
 
     def get_noise_pred(self, latents, t, is_forward=True, context=None):
@@ -203,15 +203,3 @@ class DDIM_Method(Base_Method):
         else:
             latents = self.prev_step(noise_pred, t, latents)
         return latents
-        
-    @torch.no_grad()
-    def ddim_loop(self, latent, cond_embeddings):
-        # uncond_embeddings, cond_embeddings = self.context.chunk(2)
-        all_latent = [latent]
-        latent = latent.clone().detach()
-        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
-        for t in reversed(self.timesteps_list):
-            noise_pred = self.get_noise_pred_single(latent, t, cond_embeddings)
-            latent = self.next_step(noise_pred, t, latent)
-            all_latent.append(latent)
-        return all_latent

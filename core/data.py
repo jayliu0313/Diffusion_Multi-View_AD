@@ -240,7 +240,7 @@ class TrainLightings(Dataset):
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
-        return images, nmap
+        return images, nmap, text_prompt
 
 # load validation image using for training 
 class ValLightings(Dataset):
@@ -289,8 +289,8 @@ class ValLightings(Dataset):
 
     def __getitem__(self, idx):
         img_path, label = self.data_paths[idx], self.labels[idx]
-        # cls = self.cls_list
-        # text_prompt = "a photo of a " + cls
+        cls = self.cls_list[idx]
+        text_prompt = "a photo of a " + cls
         rgb_path = img_path[0]
         images = []
         # noise_images = []
@@ -306,7 +306,7 @@ class ValLightings(Dataset):
         depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
-        return images, nmap
+        return images, nmap, text_prompt
 
 # load training normal map
 class TrainNmap(Dataset):

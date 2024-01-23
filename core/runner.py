@@ -37,10 +37,10 @@ class Runner():
         dataloader = test_lightings_loader(self.args, self.cls, "memory")
         with torch.no_grad():
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
-                if i == 5:
-                    break
-                # i += 1
-                text_prompt = f'A photo of a {self.cls}'
+                # if i == 5:
+                #     break
+                # text_prompt = f'A photo of a {self.cls}'
+                text_prompt = ""
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
       
         self.method.run_coreset()
@@ -51,7 +51,8 @@ class Runner():
         for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader)):
             # if i == 5:
             #     break
-            text_prompt = f'A photo of a {self.cls}'
+            # text_prompt = f'A photo of a {self.cls}'
+            text_prompt = ""
             self.method.predict(i, images, nmap, text_prompt, gt, label)
 
         image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics()

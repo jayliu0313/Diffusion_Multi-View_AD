@@ -215,7 +215,6 @@ class trainControlnet():
         return val_loss
 
     def train(self):
-
         # Start Training #
         loss_list = []
         val_best_loss = float('inf')
