@@ -47,8 +47,8 @@ parser.add_argument('--backbone_name', default="vit_base_patch8_224_dino")
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
 
-parser.add_argument("--noise_intensity", type=int, default=81)
-parser.add_argument("--memory_intensity", type=int, default=21)
+parser.add_argument("--noise_intensity", type=int, default=81)  # T
+parser.add_argument("--memory_intensity", type=int, default=21) # t
 parser.add_argument("--step_size", type=int, default=20)
 
 
