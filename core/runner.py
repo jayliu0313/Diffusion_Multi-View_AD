@@ -30,6 +30,8 @@ class Runner():
             self.method = ControlNet_DirectInv_Memory(args, cls_path)
         elif args.method_name == "directinv_memory":
             self.method = DirectInv_Memory(args, cls_path)
+        elif args.method_name == "ddiminv_method3_memory":
+            self.method = DDIMInv_Method3_Memory(args, cls_path)
         else:
             return TypeError
         

@@ -230,6 +230,101 @@ class DDIMInv_Memory(Memory_Method):
         self.image_list.append(t2np(img))
         self.pixel_preds.append(t2np(smap))
         self.pixel_labels.extend(t2np(gt))
+
+class DirectInv_Memory(Memory_Method):
+    def __init__(self, args, cls_path):
+        super().__init__(args, cls_path)
+
+    @torch.no_grad()
+    def ddim_loop(self, latents, text_emb, target_timestep):
+        latents = latents.clone().detach()
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        latent_list = [latents]
+        for t in reversed(self.timesteps_list):
+            timestep = torch.tensor(t.item(), device=self.device)
+            noise_pred = self.unet(latents, timestep, text_emb)['sample']
+            latents = self.next_step(noise_pred, timestep, latents)
+            latent_list.append(latents)
+            if t == target_timestep:
+                return latent_list     
+        return latent_list
+    
+    def offset_calculate(self, latents, embeddings):
+        noise_loss_list = []
+        latent_cur = latents[-1]
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+
+        for i, t in enumerate(self.timesteps_list):            
+            latent_prev = latents[len(latents) - i - 2]
+            
+            with torch.no_grad():
+                noise_pred = self.get_noise_pred_single(latent_cur, t, embeddings)
+                latents_prev_rec = self.prev_step(noise_pred, t, latent_cur)
+                loss = latent_prev - latents_prev_rec
+                
+            noise_loss_list.append(loss.detach())
+            latent_cur = latents_prev_rec + loss
+            
+        return noise_loss_list
+    
+    @torch.no_grad() 
+    def get_unet_f(self, latents, text_emb, start_t, end_t):
+        """
+        start_t: Get noise latent at this timestep by using DDIM Inversion.
+        end_t: Sampling noisy latent util this timestep.
+        """
+        assert (start_t >= end_t) and (start_t in self.timesteps_list) and (end_t in self.timesteps_list)
+        noisy_latents = self.ddim_loop(latents, text_emb, start_t)
+        loss_list = self.offset_calculate(noisy_latents, text_emb)
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        timesteps_list = [t for t in self.timesteps_list if t <= start_t and t >= end_t]
+        # print(timesteps_list)
+        noisy_latent = noisy_latents[-1]
+        for i, t in enumerate(timesteps_list):
+            timestep = torch.tensor(t.item(), device=self.device)
+            pred = self.unet(noisy_latent, timestep, text_emb)
+            noisy_latent = self.noise_scheduler.step(pred['sample'], t.item(), noisy_latent)["prev_sample"]    
+            noisy_latent = noisy_latent + loss_list[i]
+        return pred['up_ft'][3]
+    
+    def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
+        lightings = lightings.to(self.device)
+        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        latents = self.image2latents(lightings)
+        bsz = latents.shape[0]
+        text_emb = self.get_text_embedding(text_prompt, bsz)
+        
+        unet_f = self.get_unet_f(latents, text_emb, self.memory_T, self.memory_t)
+        
+        B, C, H, W = unet_f.shape
+        
+        train_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1)
+        train_unet_f = train_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        self.patch_lib.append(train_unet_f.cpu())
+    
+    def predict(self, i, lightings, nmap, text_prompt, gt, label):
+        lightings = lightings.to(self.device)
+        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        with torch.no_grad():
+            latents = self.image2latents(lightings)
+            text_emb = self.get_text_embedding(text_prompt, 6)
+            unet_f = self.get_unet_f(latents, text_emb, self.test_T, self.test_t)
+            # ddim_latents, timestep = self.ddim_loop(latents, text_embeddings, False)
+            # unet_f = self.get_unet_latent(ddim_latents, timestep, text_embeddings)
+            # unet_f = self.diffusion_loop(ddim_latents, text_embeddings)
+        
+        B, C, H, W = unet_f.shape
+        
+        test_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1)
+        test_unet_f = test_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+
+        s, smap = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
+        img = lightings[5, :, :, :]
+        self.image_labels.append(label.numpy())
+        self.image_preds.append(s.numpy())
+        self.image_list.append(t2np(img))
+        self.pixel_preds.append(t2np(smap))
+        self.pixel_labels.extend(t2np(gt))
         
 class ControlNet_DDIMInv_Memory(Memory_Method):
     def __init__(self, args, cls_path):
@@ -407,6 +502,8 @@ class ControlNet_DirectInv_Memory(Memory_Method):
             noise_pred = self.controlnet(latents, nmaps, timestep, text_emb)['sample']
             latents = self.next_step(noise_pred, timestep, latents)
             latent_list.append(latents)
+            if t == target_timestep:
+                return latent_list           
         return latent_list
     
     def offset_calculate(self, latents, nmaps, embeddings):
@@ -483,7 +580,7 @@ class ControlNet_DirectInv_Memory(Memory_Method):
         self.pixel_labels.extend(t2np(gt))
         self.pixel_preds.append(t2np(s_map))
         
-class DirectInv_Memory(Memory_Method):
+class DDIMInv_Method3_Memory(Memory_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
 
@@ -491,51 +588,13 @@ class DirectInv_Memory(Memory_Method):
     def ddim_loop(self, latents, text_emb, target_timestep):
         latents = latents.clone().detach()
         self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
-        latent_list = [latents]
+        
         for t in reversed(self.timesteps_list):
             timestep = torch.tensor(t.item(), device=self.device)
-            noise_pred = self.unet(latents, timestep, text_emb)['sample']
-            latents = self.next_step(noise_pred, timestep, latents)
-            latent_list.append(latents)
-        return latent_list
-    
-    def offset_calculate(self, latents, embeddings):
-        noise_loss_list = []
-        latent_cur = latents[-1]
-        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
-
-        for i, t in enumerate(self.timesteps_list):            
-            latent_prev = latents[len(latents) - i - 2]
-            
-            with torch.no_grad():
-                noise_pred = self.get_noise_pred_single(latent_cur, t, embeddings)
-                latents_prev_rec = self.prev_step(noise_pred, t, latent_cur)
-                loss = latent_prev - latents_prev_rec
-                
-            noise_loss_list.append(loss.detach())
-            latent_cur = latents_prev_rec + loss
-            
-        return noise_loss_list
-    
-    @torch.no_grad() 
-    def get_unet_f(self, latents, text_emb, start_t, end_t):
-        """
-        start_t: Get noise latent at this timestep by using DDIM Inversion.
-        end_t: Sampling noisy latent util this timestep.
-        """
-        assert (start_t >= end_t) and (start_t in self.timesteps_list) and (end_t in self.timesteps_list)
-        noisy_latents = self.ddim_loop(latents, text_emb, start_t)
-        loss_list = self.offset_calculate(noisy_latents, text_emb)
-        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
-        timesteps_list = [t for t in self.timesteps_list if t <= start_t and t >= end_t]
-        # print(timesteps_list)
-        noisy_latent = noisy_latents[-1]
-        for i, t in enumerate(timesteps_list):
-            timestep = torch.tensor(t.item(), device=self.device)
-            pred = self.unet(noisy_latent, timestep, text_emb)
-            noisy_latent = self.noise_scheduler.step(pred['sample'], t.item(), noisy_latent)["prev_sample"]    
-            noisy_latent = noisy_latent + loss_list[i]
-        return pred['up_ft'][3]
+            noise_pred = self.unet(latents, timestep, text_emb)
+            latents = self.next_step(noise_pred['sample'], timestep, latents)
+            if t == target_timestep:
+                return noise_pred['up_ft'][3]
     
     def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
         lightings = lightings.to(self.device)
@@ -544,7 +603,7 @@ class DirectInv_Memory(Memory_Method):
         bsz = latents.shape[0]
         text_emb = self.get_text_embedding(text_prompt, bsz)
         
-        unet_f = self.get_unet_f(latents, text_emb, self.memory_T, self.memory_t)
+        unet_f = self.ddim_loop(latents, text_emb, self.memory_T)
         
         B, C, H, W = unet_f.shape
         
@@ -558,7 +617,7 @@ class DirectInv_Memory(Memory_Method):
         with torch.no_grad():
             latents = self.image2latents(lightings)
             text_emb = self.get_text_embedding(text_prompt, 6)
-            unet_f = self.get_unet_f(latents, text_emb, self.test_T, self.test_t)
+            unet_f = self.ddim_loop(latents, text_emb, self.test_T)
             # ddim_latents, timestep = self.ddim_loop(latents, text_embeddings, False)
             # unet_f = self.get_unet_latent(ddim_latents, timestep, text_embeddings)
             # unet_f = self.diffusion_loop(ddim_latents, text_embeddings)
