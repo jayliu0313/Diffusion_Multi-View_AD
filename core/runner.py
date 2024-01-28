@@ -1,6 +1,6 @@
 from core.data import test_lightings_loader
-from core.ddim_recconstruct_method import DDIM_Rec, NULLInv_Rec, ControlNet_Rec
-from core.ddim_memory_method import DDIM_Memory, DDIMInv_Memory, ControlNet_DDIMInv_Memory
+from core.ddim_recconstruct_method import *
+from core.ddim_memory_method import *
 from tqdm import tqdm
 import torch
 import os
@@ -26,6 +26,8 @@ class Runner():
             self.method = DDIM_Rec(args, cls_path)
         elif args.method_name == "nullinv_rec":
             self.method = NULLInv_Rec(args, cls_path)
+        elif args.method_name == "directinv_memory":
+            self.method = DirectInv_Memory(args, cls_path)
         else:
             return TypeError
         
@@ -39,8 +41,8 @@ class Runner():
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
                 # if i == 5:
                 #     break
-                # text_prompt = f'A photo of a {self.cls}'
-                text_prompt = ""
+                text_prompt = f'A photo of a {self.cls}'
+                # text_prompt = ""
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
       
         self.method.run_coreset()
@@ -51,8 +53,8 @@ class Runner():
         for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader)):
             # if i == 5:
             #     break
-            # text_prompt = f'A photo of a {self.cls}'
-            text_prompt = ""
+            text_prompt = f'A photo of a {self.cls}'
+            # text_prompt = ""
             self.method.predict(i, images, nmap, text_prompt, gt, label)
 
         image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics()

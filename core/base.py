@@ -99,6 +99,7 @@ class DDIM_Method(Base_Method):
         self.noise_scheduler.set_timesteps(self.num_inference_timesteps)
         self.timesteps_list = self.noise_scheduler.timesteps[self.noise_scheduler.timesteps <= args.noise_intensity]
         self.text_encoder.to(self.device)
+        self.step_size = args.step_size
         print("num_inference_timesteps")
         print("ddim loop steps:", len(self.timesteps_list))
         print("Noise Intensity = ", self.timesteps_list)

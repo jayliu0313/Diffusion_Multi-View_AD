@@ -22,6 +22,12 @@ def log_args(args):
     log_file.write(f'Revision: {args.revision} \n\n')
 
     log_file.write(f'Noise Intensity: {args.noise_intensity} \n')
+    
+    log_file.write(f'Memory T: {args.memory_T} \n')
+    log_file.write(f'Memory t: {args.memory_t} \n')
+    log_file.write(f'Test T: {args.test_T} \n')
+    log_file.write(f'Test t: {args.test_t} \n')
+    
     log_file.write(f'Step Size: {args.step_size} \n\n')
 
     log_file.write(f'Opt Max Steps: {args.opt_max_steps} \n')
