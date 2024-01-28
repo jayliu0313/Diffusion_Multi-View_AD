@@ -364,6 +364,125 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
         self.pixel_labels.extend(t2np(gt))
         self.pixel_preds.append(t2np(s_map))
         
+class ControlNet_DirectInv_Memory(Memory_Method):
+    def __init__(self, args, cls_path):
+        super().__init__(args, cls_path)
+
+        # Setting ControlNet Model 
+        print("Loading ControlNet")
+        self.controllora = ControlLoRAModel.from_unet(self.unet, lora_linear_rank=args.controllora_linear_rank, lora_conv2d_rank=args.controllora_conv2d_rank)
+        self.controllora.load_state_dict(torch.load(args.load_controlnet_ckpt, map_location=self.device))
+        self.controllora.tie_weights(self.unet)
+        self.controllora.requires_grad_(False)
+        self.controllora.eval()
+        self.controllora.to(self.device)
+        
+        self.f_coreset = 1.0
+        self.coreset_eps = 0.9
+        self.n_reweight = 3
+        self.optimize_loop = 5
+
+    def controlnet(self, noisy_latents, nmap, timestep, text_emb):
+        down_block_res_samples, mid_block_res_sample = self.controllora(
+            noisy_latents, timestep,
+            encoder_hidden_states=text_emb,
+            controlnet_cond=nmap,
+            guess_mode=False, return_dict=False,
+        )
+        model_output = self.unet(
+            noisy_latents, timestep,
+            encoder_hidden_states=text_emb,
+            down_block_additional_residuals=[sample for sample in down_block_res_samples],
+            mid_block_additional_residual=mid_block_res_sample
+        )
+        return model_output
+    
+    @torch.no_grad()
+    def ddim_loop(self, latents, nmaps, text_emb, target_timestep):
+        latents = latents.clone().detach()
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        latent_list = [latents]
+        for t in reversed(self.timesteps_list):
+            timestep = torch.tensor(t.item(), device=self.device)
+            noise_pred = self.controlnet(latents, nmaps, timestep, text_emb)['sample']
+            latents = self.next_step(noise_pred, timestep, latents)
+            latent_list.append(latents)
+        return latent_list
+    
+    def offset_calculate(self, latents, nmaps, embeddings):
+        noise_loss_list = []
+        latent_cur = latents[-1]
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+
+        for i, t in enumerate(self.timesteps_list):            
+            latent_prev = latents[len(latents) - i - 2]
+            
+            with torch.no_grad():
+                noise_pred = self.controlnet(latent_cur, nmaps, t, embeddings)['sample']
+                latents_prev_rec = self.prev_step(noise_pred, t, latent_cur)
+                loss = latent_prev - latents_prev_rec
+                
+            noise_loss_list.append(loss.detach())
+            latent_cur = latents_prev_rec + loss
+            
+        return noise_loss_list
+    
+    @torch.no_grad() 
+    def get_unet_f(self, latents, nmaps, text_emb, start_t, end_t):
+        """
+        start_t: Get noise latent at this timestep by using DDIM Inversion.
+        end_t: Sampling noisy latent util this timestep.
+        """
+        assert (start_t >= end_t) and (start_t in self.timesteps_list) and (end_t in self.timesteps_list)
+        noisy_latents = self.ddim_loop(latents, nmaps, text_emb, start_t)
+        loss_list = self.offset_calculate(noisy_latents, nmaps, text_emb)
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        timesteps_list = [t for t in self.timesteps_list if t <= start_t and t >= end_t]
+        # print(timesteps_list)
+        noisy_latent = noisy_latents[-1]
+        for i, t in enumerate(timesteps_list):
+            timestep = torch.tensor(t.item(), device=self.device)
+            pred = self.controlnet(noisy_latent, nmaps, timestep, text_emb)
+            noisy_latent = self.noise_scheduler.step(pred['sample'], t.item(), noisy_latent)["prev_sample"]    
+            noisy_latent = noisy_latent + loss_list[i]
+        return pred['up_ft'][3]
+    
+    def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
+        lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [B * 6, 3, 256, 256]
+        nmaps = nmap.to(self.device).repeat_interleave(6, dim=0) # [B * 6, 3, 256, 256]
+        
+        latents = self.image2latents(lightings)
+        bs = lightings.shape[0]
+        text_emb = self.get_text_embedding(text_prompt, bs)
+        
+        unet_f = self.get_unet_f(latents, nmaps, text_emb, self.memory_T, self.memory_t)
+        
+        B, C, H, W = unet_f.shape
+        train_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1).squeeze(dim=1)
+        train_unet_f = train_unet_f.permute((1, 0, 2, 3)).reshape(C, -1).T
+        self.patch_lib.append(train_unet_f.cpu())
+    
+    def predict(self, i, lightings, nmap, text_prompt, gt, label):
+        lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [6, 3, 256, 256]
+        nmaps = nmap.to(self.device).repeat_interleave(6, dim=0) # [6, 3, 256, 256]
+        
+        latents = self.image2latents(lightings)
+
+        text_emb = self.get_text_embedding(text_prompt, 6)
+        unet_f = self.get_unet_f(latents, nmaps, text_emb, self.test_T, self.test_t)
+        
+        B, C, H, W = unet_f.shape
+        test_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1)
+        test_unet_f = test_unet_f.reshape(C, -1).T
+        
+        # s, s_map = self.condition_optimization(test_unet_f, noisy_latents, nmaps, encoder_hidden_states)
+        s, s_map = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
+        self.image_list.append(t2np(lightings[5]))
+        self.image_labels.append(label.numpy())
+        self.image_preds.append(s.numpy())
+        self.pixel_labels.extend(t2np(gt))
+        self.pixel_preds.append(t2np(s_map))
+        
 class DirectInv_Memory(Memory_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)

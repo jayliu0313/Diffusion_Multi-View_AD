@@ -26,6 +26,8 @@ class Runner():
             self.method = DDIM_Rec(args, cls_path)
         elif args.method_name == "nullinv_rec":
             self.method = NULLInv_Rec(args, cls_path)
+        elif args.method_name == "controlnet_directinv_memory":
+            self.method = ControlNet_DirectInv_Memory(args, cls_path)
         elif args.method_name == "directinv_memory":
             self.method = DirectInv_Memory(args, cls_path)
         else:

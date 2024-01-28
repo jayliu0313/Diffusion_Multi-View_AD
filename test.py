@@ -23,22 +23,21 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="directinv_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminv_memory, controlnet_ddiminv_memory, directinv_memory")
+parser.add_argument('--method_name', default="controlnet_directinv_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminv_memory, controlnet_ddiminv_memory, directinv_memory, controlnet_directinv_memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 
 #### Load Checkpoint ####
 parser.add_argument("--load_vae_ckpt", default=None)
 # "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/train_VAE_stable-diffusion-v1-4_woDecomp_allcls/vae_best_ckpt.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/vae_stable-diffusion-v1-4_woDecomp/vae_decomp_best_ckpt.pth"
-parser.add_argument("--load_decomp_ckpt", default=None)
 
-parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls/best_unet.pth")
+parser.add_argument("--load_unet_ckpt", default=None)
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_NullText_FeatureLossAllLayer_AllCls/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/trainUnet_vaefinetune_clsprb01free_mormalprompt_allcls/best_unet_ckpt.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls/best_unet.pth"
 
-parser.add_argument('--load_controlnet_ckpt', type=str, default=None)
+parser.add_argument('--load_controlnet_ckpt', type=str, default="/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/RgbNmap_UnetFLoss_AllClass_AllLayer_clsPrompt/controlnet_best.pth")
 # "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/RgbNmap_UnetFLoss_AllClass_AllLayer_clsPrompt/controlnet_best.pth"
 
 parser.add_argument("--load_backbone_ckpt", default=None)
@@ -92,16 +91,16 @@ log_args(args)
 def run_eyecandies(args):
     if args.dataset_type=='eyecandies':
         classes = [
-        'CandyCane',
+        # 'CandyCane',
         'ChocolateCookie',
-        'ChocolatePraline',
-        'Confetto',
-        'GummyBear',
-        'HazelnutTruffle',
-        'LicoriceSandwich',
-        'Lollipop',
-        'Marshmallow',
-        'PeppermintCandy'
+        # 'ChocolatePraline',
+        # 'Confetto',
+        # 'GummyBear',
+        # 'HazelnutTruffle',
+        # 'LicoriceSandwich',
+        # 'Lollipop',
+        # 'Marshmallow',
+        # 'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = []
@@ -114,7 +113,7 @@ def run_eyecandies(args):
     rec_loss_df = pd.DataFrame(METHOD_NAMES, columns=['Method'])
     for cls in classes:
         runner = Runner(args, cls)
-        if args.method_name == "ddim_memory" or args.method_name == "ddiminv_memory" or args.method_name == "controlnet_ddiminv_memory" or args.method_name == "directinv_memory":
+        if args.method_name == "ddim_memory" or args.method_name == "ddiminv_memory" or args.method_name == "controlnet_ddiminv_memory" or args.method_name == "directinv_memory" or args.method_name == "controlnet_directinv_memory":
             runner.fit()
         image_rocaucs, pixel_rocaucs, au_pros, rec_loss = runner.evaluate()
         image_rocaucs_df[cls.title()] = image_rocaucs_df['Method'].map(image_rocaucs)
