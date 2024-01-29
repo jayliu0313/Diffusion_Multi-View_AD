@@ -23,7 +23,7 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="ddiminv_method3_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminv_memory, controlnet_ddiminv_memory, directinv_memory, controlnet_directinv_memory, ddiminv_method3_memory")
+parser.add_argument('--method_name', default="directinv_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminv_memory, controlnet_ddiminv_memory, directinv_memory, controlnet_directinv_memory, ddiminv_method3_memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 
 #### Load Checkpoint ####
@@ -49,10 +49,10 @@ parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusio
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
 parser.add_argument("--noise_intensity", type=int, default=81) 
 
-parser.add_argument("--memory_T", type=int, default=81)  # T
-parser.add_argument("--memory_t", type=int, default=81)  # t
+parser.add_argument("--memory_T", type=int, default=21)  # T
+parser.add_argument("--memory_t", type=int, default=21)  # t
 parser.add_argument("--test_T", type=int, default=81)  # T
-parser.add_argument("--test_t", type=int, default=81)  # t
+parser.add_argument("--test_t", type=int, default=21)  # t
 
 parser.add_argument("--step_size", type=int, default=20)
 
