@@ -6,9 +6,9 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from core.data import train_lightings_loader, val_lightings_loader
 # from core.models.contrastive import Contrastive
-from core.models.rgb_network import *
+from not_use.rgb_network import *
 # from core.models.unet_model import UNet_Decom, ResUNet_Decom_AE
-from core.models.autoencoder import Autoencoder
+from not_use.autoencoder import Autoencoder
 
 # import kornia
 

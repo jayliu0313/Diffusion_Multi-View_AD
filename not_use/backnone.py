@@ -1,7 +1,7 @@
 import timm
 import torch
 import torch.nn as nn
-from core.models.initializer import initialize_from_cfg
+from not_use.initializer import initialize_from_cfg
 
 class RGB_Extractor(torch.nn.Module):
     def __init__(self, device, backbone_name='vit_base_patch8_224_dino', out_indices=None, checkpoint_path='',

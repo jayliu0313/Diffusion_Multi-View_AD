@@ -6,14 +6,14 @@ import argparse
 
 from core.data import train_lightings_loader, val_lightings_loader
 from core.models.controllora import ControlLoRAModel
-from core.models.autoencoder import Autoencoder
+from not_use.autoencoder import Autoencoder
 
 
 from transformers import CLIPTextModel, AutoTokenizer
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 
-from core.models.backnone import RGB_Extractor
+from not_use.backnone import RGB_Extractor
 from torchvision import transforms
 from tqdm import tqdm
 

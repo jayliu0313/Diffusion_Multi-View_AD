@@ -4,7 +4,7 @@ import os
 import os.path as osp
 from tqdm import tqdm
 from core.data import train_nmap_loader, val_nmap_loader
-from core.models.nmap_network import NMap_AE, NMap_ResnetAE
+from not_use.nmap_network import NMap_AE, NMap_ResnetAE
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)

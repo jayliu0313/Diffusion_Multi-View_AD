@@ -265,7 +265,7 @@ class ValLightings(Dataset):
             rgb_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data', "*_image_*.png")))
             normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
             depth_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_depth.png"))
-            self.cls_list.extend([cls] * 1000)
+            self.cls_list.extend([cls] * 100)
         rgb_paths.sort()
         normal_paths.sort()     
         depth_paths.sort()

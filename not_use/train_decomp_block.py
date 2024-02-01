@@ -7,7 +7,7 @@ import math
 import itertools
 from tqdm import tqdm
 
-from core.models.backnone import RGB_Extractor
+from not_use.backnone import RGB_Extractor
 from core.models.network_util import Decom_Block
 from core.data import train_lightings_loader, val_lightings_loader
 from torchvision.transforms import transforms
