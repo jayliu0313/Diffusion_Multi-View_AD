@@ -11,7 +11,7 @@ from sklearn.metrics import roc_auc_score
 
 # Diffusion model
 from diffusers import DDIMScheduler
-from core.models.unet_model import MyUNet2DConditionModel
+from core.models.unet_model import build_unet, build_rgbnmap_unet
 from transformers import CLIPTextModel, AutoTokenizer
 from diffusers import AutoencoderKL
 from utils.ptp_utils import *
@@ -103,12 +103,11 @@ class DDIM_Method(Base_Method):
         print("num_inference_timesteps")
         print("ddim loop steps:", len(self.timesteps_list))
         print("Noise Intensity = ", self.timesteps_list)
-        self.unet = MyUNet2DConditionModel.from_pretrained(
-            args.diffusion_id,
-            subfolder="unet",
-            revision=args.revision
-        ).to(self.device)
-        
+        if "rgbnmap" in args.method_name:
+            self.unet = build_rgbnmap_unet(args)
+        else:
+            self.unet = build_unet(args)
+        self.unet.to(self.device)
         self.vae = AutoencoderKL.from_pretrained(
             args.diffusion_id,
             subfolder="vae",

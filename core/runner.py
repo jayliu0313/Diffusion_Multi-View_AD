@@ -16,8 +16,12 @@ class Runner():
         
         if args.method_name == "ddim_memory":
             self.method = DDIM_Memory(args, cls_path)
-        elif args.method_name == "ddiminv_memory":
-            self.method = DDIMInv_Memory(args, cls_path)
+        elif args.method_name == "ddiminvrgb_memory":
+            self.method = DDIMInvRGB_Memory(args, cls_path)
+        elif args.method_name == "ddiminvnmap_memory":
+            self.method = DDIMInvNmap_Memory(args, cls_path)
+        elif args.method_name == "ddiminvrgbnmap_memory":
+            self.method = DDIMInvRGBNmap_Memory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
         elif args.method_name == "controlnet_rec":
@@ -30,8 +34,6 @@ class Runner():
             self.method = ControlNet_DirectInv_Memory(args, cls_path)
         elif args.method_name == "directinv_memory":
             self.method = DirectInv_Memory(args, cls_path)
-        elif args.method_name == "ddiminv_method3_memory":
-            self.method = DDIMInv_Method3_Memory(args, cls_path)
         else:
             return TypeError
         
