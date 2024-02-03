@@ -152,6 +152,10 @@ class TrainUnet():
 
     def log_validation(self):
         val_loss = 0.0
+        epoch_nmap_noise_loss = 0.0
+        epoch_rgb_noise_loss = 0.0
+        epoch_feature_loss = 0.0
+        epoch_cos_loss = 0.0
         i = 0
         for lightings, nmaps, text_prompt in tqdm(self.val_dataloader, desc="Validation"):
             # i+=1
@@ -182,28 +186,28 @@ class TrainUnet():
                 unet_f_layer0 = model_output['up_ft'][0]
                 _, C, H, W = unet_f_layer0.shape
                 mean_unet_f_layer0 = torch.mean(unet_f_layer0.view(-1, 6, C, H, W), dim=1)
-                mean_unet_f_layer0 = mean_unet_f_layer0.repeat_interleave(6, dim=0)
+                rp_mean_unet_f_layer0 = mean_unet_f_layer0.repeat_interleave(6, dim=0)
 
                 unet_f_layer1 = model_output['up_ft'][1]
                 _, C, H, W = unet_f_layer1.shape
                 mean_unet_f_layer1 = torch.mean(unet_f_layer1.view(-1, 6, C, H, W), dim=1)
-                mean_unet_f_layer1 = mean_unet_f_layer1.repeat_interleave(6, dim=0)
+                rp_mean_unet_f_layer1 = mean_unet_f_layer1.repeat_interleave(6, dim=0)
 
                 unet_f_layer2 = model_output['up_ft'][2]
                 _, C, H, W = unet_f_layer2.shape
                 mean_unet_f_layer2 = torch.mean(unet_f_layer2.view(-1, 6, C, H, W), dim=1)
-                mean_unet_f_layer2 = mean_unet_f_layer2.repeat_interleave(6, dim=0)
+                rp_mean_unet_f_layer2 = mean_unet_f_layer2.repeat_interleave(6, dim=0)
 
                 unet_f_layer3 = model_output['up_ft'][3]
                 _, C, H, W = unet_f_layer3.shape
                 mean_unet_f_layer3 = torch.mean(unet_f_layer3.view(-1, 6, C, H, W), dim=1)
-                mean_unet_f_layer3 = mean_unet_f_layer3.repeat_interleave(6, dim=0)
+                rp_mean_unet_f_layer3 = mean_unet_f_layer3.repeat_interleave(6, dim=0)
 
                 # Compute loss and optimize model parameter
-                feature_loss = F.l1_loss(mean_unet_f_layer0, unet_f_layer0, reduction="mean")
-                feature_loss += F.l1_loss(mean_unet_f_layer1, unet_f_layer1, reduction="mean")
-                feature_loss += F.l1_loss(mean_unet_f_layer2, unet_f_layer2, reduction="mean")
-                feature_loss += F.l1_loss(mean_unet_f_layer3, unet_f_layer3, reduction="mean")
+                feature_loss = F.l1_loss(rp_mean_unet_f_layer0, unet_f_layer0, reduction="mean")
+                feature_loss += F.l1_loss(rp_mean_unet_f_layer1, unet_f_layer1, reduction="mean")
+                feature_loss += F.l1_loss(rp_mean_unet_f_layer2, unet_f_layer2, reduction="mean")
+                feature_loss += F.l1_loss(rp_mean_unet_f_layer3, unet_f_layer3, reduction="mean")
                 Lambda = 0.01
                 # Compute loss and optimize model parameter
                 noise_loss = F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
@@ -229,21 +233,37 @@ class TrainUnet():
                 nmap_pred_noise = nmap_model_output['sample']
                 nmap_noise_loss = F.mse_loss(nmap_pred_noise.float(), nmap_noise.float(), reduction="mean")
                 
-                loss = nmap_noise_loss + noise_loss + Lambda * feature_loss + delta * cos_f_loss
+                loss = nmap_noise_loss * 0.5 + noise_loss * 0.5 + Lambda * feature_loss + delta * cos_f_loss
                 val_loss += loss.item()
+                epoch_nmap_noise_loss += nmap_noise_loss.item()
+                epoch_rgb_noise_loss += noise_loss.item()
+                epoch_feature_loss += feature_loss.item()
+                epoch_cos_loss += cos_f_loss.item()
 
         val_loss /= len(self.val_dataloader)
-        print('Validation Loss: {:.6f}'.format(val_loss))
-        self.val_log_file.write('Validation Loss: {:.6f}\n'.format(val_loss))
+        epoch_nmap_noise_loss /= len(self.val_dataloader)
+        epoch_rgb_noise_loss /= len(self.val_dataloader)
+        epoch_feature_loss /= len(self.val_dataloader)
+        epoch_cos_loss /= len(self.val_dataloader)
+        print('Validation Loss: {:.6f}, rgb noise loss: {:.6f}, nmap noise loss: {:.6f}, feature loss:{:.6f}, cosine loss:{:.6f}'.format(val_loss, epoch_rgb_noise_loss, epoch_nmap_noise_loss, epoch_feature_loss, epoch_cos_loss))
+        self.val_log_file.write('Validation Loss: {:.6f}, rgb noise loss: {:.6f}, nmap noise loss: {:.6f}, feature loss:{:.6f}, cosine loss:{:.6f}\n'.format(val_loss, epoch_rgb_noise_loss, epoch_nmap_noise_loss, epoch_feature_loss, epoch_cos_loss))
         return val_loss
 
     def train(self):
         # Start Training #
         loss_list = []
+        rgb_noise_loss_list = []
+        nmap_noise_loss_list = []
+        feature_loss_list = []
+        cos_loss_list = []
         val_best_loss = float('inf')
         for epoch in range(self.num_train_epochs):
 
             epoch_loss = 0.0
+            epoch_nmap_noise_loss = 0.0
+            epoch_rgb_noise_loss = 0.0
+            epoch_feature_loss = 0.0
+            epoch_cos_loss = 0.0
             i = 0
             for lightings, nmaps, text_prompt in tqdm(self.train_dataloader, desc="Training"):
                 # i+=1
@@ -272,28 +292,28 @@ class TrainUnet():
                 unet_f_layer0 = model_output['up_ft'][0]
                 _, C, H, W = unet_f_layer0.shape
                 mean_unet_f_layer0 = torch.mean(unet_f_layer0.view(-1, 6, C, H, W), dim=1)
-                mean_unet_f_layer0 = mean_unet_f_layer0.repeat_interleave(6, dim=0)
+                rp_mean_unet_f_layer0 = mean_unet_f_layer0.repeat_interleave(6, dim=0)
 
                 unet_f_layer1 = model_output['up_ft'][1]
                 _, C, H, W = unet_f_layer1.shape
                 mean_unet_f_layer1 = torch.mean(unet_f_layer1.view(-1, 6, C, H, W), dim=1)
-                mean_unet_f_layer1 = mean_unet_f_layer1.repeat_interleave(6, dim=0)
+                rp_mean_unet_f_layer1 = mean_unet_f_layer1.repeat_interleave(6, dim=0)
 
                 unet_f_layer2 = model_output['up_ft'][2]
                 _, C, H, W = unet_f_layer2.shape
                 mean_unet_f_layer2 = torch.mean(unet_f_layer2.view(-1, 6, C, H, W), dim=1)
-                mean_unet_f_layer2 = mean_unet_f_layer2.repeat_interleave(6, dim=0)
+                rp_mean_unet_f_layer2 = mean_unet_f_layer2.repeat_interleave(6, dim=0)
 
                 unet_f_layer3 = model_output['up_ft'][3]
                 _, C, H, W = unet_f_layer3.shape
                 mean_unet_f_layer3 = torch.mean(unet_f_layer3.view(-1, 6, C, H, W), dim=1)
-                mean_unet_f_layer3 = mean_unet_f_layer3.repeat_interleave(6, dim=0)
+                rp_mean_unet_f_layer3 = mean_unet_f_layer3.repeat_interleave(6, dim=0)
 
                 # Compute loss and optimize model parameter
-                feature_loss = F.l1_loss(mean_unet_f_layer0, unet_f_layer0, reduction="mean")
-                feature_loss += F.l1_loss(mean_unet_f_layer1, unet_f_layer1, reduction="mean")
-                feature_loss += F.l1_loss(mean_unet_f_layer2, unet_f_layer2, reduction="mean")
-                feature_loss += F.l1_loss(mean_unet_f_layer3, unet_f_layer3, reduction="mean")
+                feature_loss = F.l1_loss(rp_mean_unet_f_layer0, unet_f_layer0, reduction="mean")
+                feature_loss += F.l1_loss(rp_mean_unet_f_layer1, unet_f_layer1, reduction="mean")
+                feature_loss += F.l1_loss(rp_mean_unet_f_layer2, unet_f_layer2, reduction="mean")
+                feature_loss += F.l1_loss(rp_mean_unet_f_layer3, unet_f_layer3, reduction="mean")
 
                 Lambda = 0.01
                 # Compute loss and optimize model parameter
@@ -320,23 +340,41 @@ class TrainUnet():
                 nmap_pred_noise = nmap_model_output['sample']
                 nmap_noise_loss = F.mse_loss(nmap_pred_noise.float(), nmap_noise.float(), reduction="mean")
                 
-                loss = nmap_noise_loss + noise_loss + Lambda * feature_loss + delta * cos_f_loss
-
+                loss = nmap_noise_loss * 0.5 + noise_loss * 0.5 + Lambda * feature_loss + delta * cos_f_loss
                 loss.backward()
                 epoch_loss += loss.item()
+                epoch_nmap_noise_loss += nmap_noise_loss.item()
+                epoch_rgb_noise_loss += noise_loss.item()
+                epoch_feature_loss += feature_loss.item()
+                epoch_cos_loss += cos_f_loss.item()
+                
                 nn.utils.clip_grad_norm_(self.unet.parameters(), args.max_grad_norm)
 
                 self.optimizer.step()
                 self.lr_scheduler.step()
 
             epoch_loss /= len(self.train_dataloader)
+            epoch_nmap_noise_loss /= len(self.train_dataloader)
+            epoch_rgb_noise_loss /= len(self.train_dataloader)
+            epoch_feature_loss /= len(self.train_dataloader)
+            epoch_cos_loss /= len(self.train_dataloader)
+            
             loss_list.append(epoch_loss)
-            print('Training - Epoch {}: Loss: {:.6f}'.format(epoch, epoch_loss))
-            self.train_log_file.write('Training - Epoch {}: Loss: {:.6f}\n'.format(epoch, epoch_loss))
+            rgb_noise_loss_list.append(epoch_rgb_noise_loss)
+            nmap_noise_loss_list.append(epoch_nmap_noise_loss)
+            feature_loss_list.append(epoch_feature_loss)
+            cos_loss_list.append(epoch_cos_loss)
+            
+            print('Training - Epoch {} Loss: {:.6f}, rgb noise loss: {:.6f}, nmap noise loss: {:.6f}, feature loss:{:.6f}, cosine loss:{:.6f}'.format(epoch, epoch_loss, epoch_rgb_noise_loss, epoch_nmap_noise_loss, epoch_feature_loss, epoch_cos_loss))
+            self.train_log_file.write('Training - Epoch {} Loss: {:.6f}, rgb noise loss: {:.6f}, nmap noise loss: {:.6f}, feature loss:{:.6f}, cosine loss:{:.6f}\n'.format(epoch, epoch_loss, epoch_rgb_noise_loss, epoch_nmap_noise_loss, epoch_feature_loss, epoch_cos_loss))
 
             # save model
             if epoch % self.save_epoch == 0:
-                export_loss(args.ckpt_path + '/loss.png', loss_list)
+                export_loss(args.ckpt_path + '/total_loss.png', loss_list)
+                export_loss(args.ckpt_path + '/rgb_noise_loss.png', rgb_noise_loss_list)
+                export_loss(args.ckpt_path + '/nmap_noise_loss.png', nmap_noise_loss_list)
+                export_loss(args.ckpt_path + '/feature_loss.png', feature_loss_list)
+                export_loss(args.ckpt_path + '/cosine_loss.png', cos_loss_list)
                 val_loss = self.log_validation() # Evaluate
                 if val_loss < val_best_loss:
                     val_best_loss = val_loss
