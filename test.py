@@ -47,12 +47,12 @@ parser.add_argument('--backbone_name', default="vit_base_patch8_224_dino")
 # Unet Model (Diffusion Model)
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
-parser.add_argument("--noise_intensity", type=int, default=81) 
+parser.add_argument("--noise_intensity", type=int, default=501) 
 
-parser.add_argument("--memory_T", type=int, default=81)  # T
-parser.add_argument("--memory_t", type=int, default=81)  # t
-parser.add_argument("--test_T", type=int, default=81)  # T
-parser.add_argument("--test_t", type=int, default=81)  # t
+parser.add_argument("--memory_T", type=int, default=501)  # T
+parser.add_argument("--memory_t", type=int, default=41)  # t
+parser.add_argument("--test_T", type=int, default=501)  # T
+parser.add_argument("--test_t", type=int, default=41)  # t
 
 parser.add_argument("--step_size", type=int, default=20)
 

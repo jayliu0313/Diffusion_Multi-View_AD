@@ -10,7 +10,7 @@ from core.data import train_lightings_loader, val_lightings_loader
 import torch.nn.functional as F
 from transformers import CLIPTextModel, AutoTokenizer
 from diffusers import AutoencoderKL, DDPMScheduler
-from core.models.unet_model import build_rgbnmap_unet
+from core.models.unet_model import build_unet
 
 from diffusers.optimization import get_scheduler
 import matplotlib.pyplot as plt
@@ -20,7 +20,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainRGBNmapUNet_ClsText_FeatureLossAllLayer_AllCls")
+parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainUnifiedUnet_ClsText_FeatureLossAllLayer_AllCls")
 parser.add_argument('--load_vae_ckpt', default=None)
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
@@ -61,6 +61,10 @@ def export_loss(save_path, loss_list):
     plt.cla()
     plt.close("all")
 
+def cos_loss(a, b):
+    cos_loss = nn.CosineSimilarity()
+    loss = torch.mean(1-cos_loss(a.view(a.shape[0],-1),b.view(b.shape[0],-1))) 
+    return loss
 
 class TrainUnet():
     def __init__(self, args, device):
@@ -87,9 +91,11 @@ class TrainUnet():
             subfolder="vae",
             revision=args.revision,
         ).to(self.device)
+        # self.adapter = nn.Sequential(
+        #     nn.Conv2d(4, 4, 3, padding=1),
+        # )
 
-
-        self.unet = build_rgbnmap_unet(args)
+        self.unet = build_unet(args)
 
         self.vae.requires_grad_(False)
         self.unet.requires_grad_(True)
@@ -138,12 +144,11 @@ class TrainUnet():
         x_t = self.noise_scheduler.add_noise(x_0, noise, timestep) # Corrupt image
         return noise, timestep, x_t
 
-    def get_text_embedding(self, text_prompt, n):
+    def get_text_embedding(self, text_prompt):
         with torch.no_grad():
             tok = self.tokenizer(text_prompt, padding="max_length", max_length=self.tokenizer.model_max_length, truncation=True, return_tensors="pt")
             text_embedding = self.text_encoder(tok.input_ids.to(self.device))[0]
-            text_embeddings = text_embedding.repeat_interleave(n, dim=0)
-        return text_embeddings
+        return text_embedding
 
     def log_validation(self):
         val_loss = 0.0
@@ -155,21 +160,18 @@ class TrainUnet():
             with torch.no_grad():
                 # print(text_prompt)
                 lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
-                nmaps = nmaps.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
+                text_embedding = self.get_text_embedding(text_prompt)
+            
                 # Convert images to latent space
-                latents = self.image2latents(lightings)
+                img_latents = self.image2latents(lightings)
                 # Add noise to the latents according to the noise magnitude at each timestep
-                noise, timesteps, noisy_latents = self.forward_process(latents)
+                noise, timesteps, noisy_latents = self.forward_process(img_latents)
                 
-                _, _, h, w = noisy_latents.shape
-                
-                noisy_latents = torch.cat((noisy_latents, F.interpolate(nmaps, (h,w))), 1)
+                text_embeddings = text_embedding.repeat_interleave(6, dim=0)
                 # Get CLIP embeddings
                  # [bs * 6, 77, 768]
-                # Training ControlNet
-                text_embeddings = self.get_text_embedding(text_prompt, 6)
-
                 # Predict the noise from Unet
+
                 model_output = self.unet(
                     noisy_latents,
                     timesteps,
@@ -205,7 +207,29 @@ class TrainUnet():
                 Lambda = 0.01
                 # Compute loss and optimize model parameter
                 noise_loss = F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
-                loss = noise_loss + Lambda * feature_loss
+                
+                nmap_latents = self.image2latents(nmaps.to(self.device))
+                nmap_noise, nmaps_timesteps, nmap_noisy_latents = self.forward_process(nmap_latents)
+                nmap_model_output = self.unet(
+                    nmap_noisy_latents,
+                    nmaps_timesteps,
+                    encoder_hidden_states=text_embedding,
+                )
+                nmap_pred_noise = nmap_model_output['sample']
+                nmap_unet_f_layer0 = nmap_model_output['up_ft'][0]
+                nmap_unet_f_layer1 = nmap_model_output['up_ft'][1]
+                nmap_unet_f_layer2 = nmap_model_output['up_ft'][2]
+                nmap_unet_f_layer3 = nmap_model_output['up_ft'][3]
+                delta = 0.01
+                cos_f_loss = cos_loss(nmap_unet_f_layer0, mean_unet_f_layer0)
+                cos_f_loss += cos_loss(nmap_unet_f_layer1, mean_unet_f_layer1)
+                cos_f_loss += cos_loss(nmap_unet_f_layer2, mean_unet_f_layer2)
+                cos_f_loss += cos_loss(nmap_unet_f_layer3, mean_unet_f_layer3)
+                
+                nmap_pred_noise = nmap_model_output['sample']
+                nmap_noise_loss = F.mse_loss(nmap_pred_noise.float(), nmap_noise.float(), reduction="mean")
+                
+                loss = nmap_noise_loss + noise_loss + Lambda * feature_loss + delta * cos_f_loss
                 val_loss += loss.item()
 
         val_loss /= len(self.val_dataloader)
@@ -228,15 +252,15 @@ class TrainUnet():
                 # print(text_prompt)
                 self.optimizer.zero_grad()
                 lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
-                nmaps = nmaps.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
+                
+                text_embedding = self.get_text_embedding(text_prompt)
                 
                 # Convert images to latent space
                 latents = self.image2latents(lightings)
                 # Add noise to the latents according to the noise magnitude at each timestep
                 noise, timesteps, noisy_latents = self.forward_process(latents)
-                text_embeddings = self.get_text_embedding(text_prompt, 6)
-                _, _, h, w = noisy_latents.shape
-                noisy_latents = torch.cat((noisy_latents, F.interpolate(nmaps, (h,w))), 1)
+                text_embeddings = text_embedding.repeat_interleave(6, dim=0)
+
                 # Predict the noise from Unet
                 model_output = self.unet(
                     noisy_latents,
@@ -274,7 +298,29 @@ class TrainUnet():
                 Lambda = 0.01
                 # Compute loss and optimize model parameter
                 noise_loss = F.mse_loss(pred_noise.float(), noise.float(), reduction="mean")
-                loss = noise_loss + Lambda * feature_loss
+                
+                nmap_latents = self.image2latents(nmaps.to(self.device))
+                nmap_noise, nmaps_timesteps, nmap_noisy_latents = self.forward_process(nmap_latents)
+                nmap_model_output = self.unet(
+                    nmap_noisy_latents,
+                    nmaps_timesteps,
+                    encoder_hidden_states=text_embedding,
+                )
+                
+                nmap_unet_f_layer0 = nmap_model_output['up_ft'][0]
+                nmap_unet_f_layer1 = nmap_model_output['up_ft'][1]
+                nmap_unet_f_layer2 = nmap_model_output['up_ft'][2]
+                nmap_unet_f_layer3 = nmap_model_output['up_ft'][3]
+                delta = 0.01
+                cos_f_loss = cos_loss(nmap_unet_f_layer0, mean_unet_f_layer0)
+                cos_f_loss += cos_loss(nmap_unet_f_layer1, mean_unet_f_layer1)
+                cos_f_loss += cos_loss(nmap_unet_f_layer2, mean_unet_f_layer2)
+                cos_f_loss += cos_loss(nmap_unet_f_layer3, mean_unet_f_layer3)
+                
+                nmap_pred_noise = nmap_model_output['sample']
+                nmap_noise_loss = F.mse_loss(nmap_pred_noise.float(), nmap_noise.float(), reduction="mean")
+                
+                loss = nmap_noise_loss + noise_loss + Lambda * feature_loss + delta * cos_f_loss
 
                 loss.backward()
                 epoch_loss += loss.item()
