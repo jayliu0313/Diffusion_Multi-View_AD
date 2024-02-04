@@ -292,6 +292,97 @@ class DDIMInvNmap_Memory(Memory_Method):
         self.pixel_preds.append(t2np(smap))
         self.pixel_labels.extend(t2np(gt))
 
+class DDIMInvUnified_Memory(Memory_Method):
+    def __init__(self, args, cls_path):
+        super().__init__(args, cls_path)
+
+    @torch.no_grad()
+    def ddim_loop(self, latents, text_emb, target_timestep):
+        latents = latents.clone().detach()
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        
+        for t in reversed(self.timesteps_list):
+            timestep = torch.tensor(t.item(), device=self.device)
+            noise_pred = self.unet(latents, timestep, text_emb)['sample']
+            latents = self.next_step(noise_pred, timestep, latents)
+            if t == target_timestep:
+                return latents, t
+    
+    @torch.no_grad() 
+    def get_unet_f(self, latents, text_emb, start_t, end_t):
+        """
+        start_t: Get noise latent at this timestep by using DDIM Inversion.
+        end_t: Sampling noisy latent util this timestep.
+        """
+        assert (start_t >= end_t) and (start_t in self.timesteps_list) and (end_t in self.timesteps_list)
+        noisy_latents, _  = self.ddim_loop(latents, text_emb, start_t)
+        self.noise_scheduler.set_timesteps(self.num_inference_timesteps, device=self.device)
+        timesteps_list = [t for t in self.timesteps_list if t <= start_t and t >= end_t]
+        # print(timesteps_list)
+        for t in timesteps_list:
+            timestep = torch.tensor(t.item(), device=self.device)
+            pred = self.unet(noisy_latents, timestep, text_emb)
+            noisy_latents = self.noise_scheduler.step(pred['sample'], t.item(), noisy_latents)["prev_sample"]    
+        return pred['up_ft'][3]
+    
+    def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
+        text_emb = self.get_text_embedding(text_prompt, 1)
+        
+        # rgb
+        lightings = lightings.to(self.device)
+        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        rgb_latents = self.image2latents(lightings)
+        bsz = rgb_latents.shape[0]
+        rgb_text_embs = text_emb.repeat(bsz, 1, 1)
+        rgb_unet_f = self.get_unet_f(rgb_latents, rgb_text_embs, self.memory_T, self.memory_t)
+        B, C, H, W = rgb_unet_f.shape
+        train_rgb_unet_f = torch.mean(rgb_unet_f.view(-1, 6, C, H, W), dim=1)
+        train_rgb_unet_f = train_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        
+        # normal  map
+        nmap = nmap.to(self.device)
+        nmap_latents = self.image2latents(nmap)
+        bsz = nmap_latents.shape[0]
+        nmap_text_embs = text_emb.repeat(bsz, 1, 1)
+        nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs, self.memory_T, self.memory_t)
+        B, C, H, W = nmap_unet_f.shape
+        train_nmap_unet_f = nmap_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+
+        # combine
+        train_unet_f = torch.cat((train_rgb_unet_f, train_nmap_unet_f), dim = 1)
+        self.patch_lib.append(train_unet_f.cpu())
+    @ torch.no_grad()
+    def predict(self, i, lightings, nmap, text_prompt, gt, label):
+        text_emb = self.get_text_embedding(text_prompt, 1)
+        # rgb
+        lightings = lightings.to(self.device)
+        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        rgb_latents = self.image2latents(lightings)
+        bsz = rgb_latents.shape[0]
+        rgb_text_embs = text_emb.repeat(bsz, 1, 1)
+        rgb_unet_f = self.get_unet_f(rgb_latents, rgb_text_embs, self.test_T, self.test_t)
+        B, C, H, W = rgb_unet_f.shape
+        test_rgb_unet_f = torch.mean(rgb_unet_f.view(-1, 6, C, H, W), dim=1)
+        test_rgb_unet_f = test_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        
+        # nromal map
+        nmap = nmap.to(self.device)
+        nmap_latents = self.image2latents(nmap)
+        bsz = nmap_latents.shape[0]
+        nmap_text_embs = text_emb.repeat(bsz, 1, 1)
+        nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs, self.test_T, self.test_t)
+        B, C, H, W = nmap_unet_f.shape
+        test_nmap_unet_f = nmap_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        test_unet_f = torch.cat((test_rgb_unet_f, test_nmap_unet_f), dim = 1)
+        
+        s, smap = self.compute_s_s_map(test_unet_f, nmap_unet_f.shape[-2:])
+        img = lightings[5, :, :, :]
+        self.image_labels.append(label.numpy())
+        self.image_preds.append(s.numpy())
+        self.image_list.append(t2np(img))
+        self.pixel_preds.append(t2np(smap))
+        self.pixel_labels.extend(t2np(gt))
+
 class DDIMInvRGBNmap_Memory(Memory_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)

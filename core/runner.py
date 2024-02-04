@@ -22,6 +22,8 @@ class Runner():
             self.method = DDIMInvNmap_Memory(args, cls_path)
         elif args.method_name == "ddiminvrgbnmap_memory":
             self.method = DDIMInvRGBNmap_Memory(args, cls_path)
+        elif args.method_name == "ddiminvunified_memory":
+            self.method = DDIMInvUnified_Memory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
         elif args.method_name == "controlnet_rec":

@@ -23,7 +23,7 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="ddiminvrgbnmap_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvrgbnmap_memory, controlnet_ddiminv_memory, directinv_memory, controlnet_directinv_memory")
+parser.add_argument('--method_name', default="ddiminvunified_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvrgbnmap_memory, ddiminvunified_memory, controlnet_ddiminv_memory, directinv_memory, controlnet_directinv_memory")
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 
 #### Load Checkpoint ####
@@ -31,14 +31,17 @@ parser.add_argument("--load_vae_ckpt", default=None)
 # "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/train_VAE_stable-diffusion-v1-4_woDecomp_allcls/vae_best_ckpt.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/vae_stable-diffusion-v1-4_woDecomp/vae_decomp_best_ckpt.pth"
 
-parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainRGBNmapUNet_ClsText_FeatureLossAllLayer_AllCls/best_unet.pth")
+parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_3cls/best_unet.pth")
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_NullText_FeatureLossAllLayer_AllCls/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls/best_unet.pth"
 # "checkpoints/diffusion_checkpoints/TrainNmapUNet_ClsText_FeatureLossAllLayer_AllCls/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainRGBNmapUNet_ClsText_FeatureLossAllLayer_AllCls/best_unet.pth"
+# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_3cls/best_unet.pth"
+
 parser.add_argument('--load_controlnet_ckpt', type=str, default=None)
 # "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/RgbNmap_UnetFLoss_AllClass_AllLayer_clsPrompt/controlnet_best.pth"
+
 
 parser.add_argument("--load_backbone_ckpt", default=None)
 parser.add_argument('--load_nmap_ckpt_path', default=None)
@@ -47,12 +50,12 @@ parser.add_argument('--backbone_name', default="vit_base_patch8_224_dino")
 # Unet Model (Diffusion Model)
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
-parser.add_argument("--noise_intensity", type=int, default=501) 
+parser.add_argument("--noise_intensity", type=int, default=81) 
 
-parser.add_argument("--memory_T", type=int, default=501)  # T
-parser.add_argument("--memory_t", type=int, default=41)  # t
-parser.add_argument("--test_T", type=int, default=501)  # T
-parser.add_argument("--test_t", type=int, default=41)  # t
+parser.add_argument("--memory_T", type=int, default=81)  # T
+parser.add_argument("--memory_t", type=int, default=81)  # t
+parser.add_argument("--test_T", type=int, default=81)  # T
+parser.add_argument("--test_t", type=int, default=81)  # t
 
 parser.add_argument("--step_size", type=int, default=20)
 
@@ -93,14 +96,14 @@ def run_eyecandies(args):
         classes = [
         'CandyCane',
         'ChocolateCookie',
-        'ChocolatePraline',
-        'Confetto',
+        # 'ChocolatePraline',
+        # 'Confetto',
         'GummyBear',
-        'HazelnutTruffle',
-        'LicoriceSandwich',
-        'Lollipop',
-        'Marshmallow',
-        'PeppermintCandy'
+        # 'HazelnutTruffle',
+        # 'LicoriceSandwich',
+        # 'Lollipop',
+        # 'Marshmallow',
+        # 'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = []
