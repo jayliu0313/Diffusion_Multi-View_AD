@@ -30,6 +30,7 @@ class Base_Method():
         self.criteria = torch.nn.MSELoss()    
         
         self.patch_lib = []
+        self.nmap_patch_lib = []
         self.image_size = args.image_size
         
         self.cls_path = cls_path

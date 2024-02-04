@@ -78,7 +78,7 @@ else:
     # FILE_NAME = "ddiminv_unet_4thlayers_noise1_textpromptnormal"
     # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_loop{args.num_opt_steps}_gdscale{args.guidance_scale}_clsprompt"
     # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_memory{args.memory_intensity}_FeatureLoss_clstxt_method1"
-    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_FeatureLoss_clstxt"
+    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_FeatureLoss_clstxt_DualMemory"
 cuda_idx = str(args.CUDA)
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= cuda_idx

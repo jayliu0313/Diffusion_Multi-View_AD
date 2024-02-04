@@ -21,9 +21,9 @@ class Memory_Method(DDIM_Method):
         self.test_T = args.test_T
         self.test_t = args.test_t
         
-    def compute_s_s_map(self, patch, feature_map_dims):
-        self.patch_lib = self.patch_lib.to(self.device)
-        dist = torch.cdist(patch, self.patch_lib)
+    def compute_s_s_map(self, patch, patch_lib, feature_map_dims):
+        patch_lib = patch_lib.to(self.device)
+        dist = torch.cdist(patch, patch_lib)
         # print(self.patch_lib.shape)
         min_val, min_idx = torch.min(dist, dim=1)
         # print(min_idx.shape)
@@ -37,17 +37,11 @@ class Memory_Method(DDIM_Method):
         s_map = self.blur(s_map.to('cpu'))
         return s_star.to('cpu'), s_map
     
-    def get_memory_nnfeature(self, patch, feature_map_dims):
-        dist = torch.cdist(patch, self.patch_lib.to(self.device))
-        min_idx = torch.argmin(dist, dim=1)
-        nnfeature = self.patch_lib[min_idx].view(1, 4, *feature_map_dims)
-        nnfeature = nnfeature.repeat(6, 1, 1, 1)
-        # print(nnfeature.shape)
-        return nnfeature.to(self.device)
-    
     def run_coreset(self):
         self.patch_lib = torch.cat(self.patch_lib, 0)
-        
+        if self.nmap_patch_lib:
+           self.nmap_patch_lib = torch.cat(self.nmap_patch_lib, 0)
+            
         if self.f_coreset < 1:
             self.coreset_idx = self.get_coreset_idx_randomp(self.patch_lib,
                                                             n=int(self.f_coreset * self.patch_lib.shape[0]),
@@ -151,7 +145,7 @@ class DDIM_Memory(Memory_Method):
         test_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1)
         test_unet_f = test_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
 
-        s, smap = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
+        s, smap = self.compute_s_s_map(test_unet_f, self.patch_lib, unet_f.shape[-2:])
         img = lightings[5, :, :, :]
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
@@ -223,7 +217,7 @@ class DDIMInvRGB_Memory(Memory_Method):
         test_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1)
         test_unet_f = test_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
 
-        s, smap = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
+        s, smap = self.compute_s_s_map(test_unet_f, self.patch_lib, unet_f.shape[-2:])
         img = lightings[5, :, :, :]
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
@@ -284,7 +278,7 @@ class DDIMInvNmap_Memory(Memory_Method):
             unet_f = self.get_unet_f(latents, text_emb, self.test_T, self.test_t)
         B, C, H, W = unet_f.shape
         test_unet_f = unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
-        s, smap = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
+        s, smap = self.compute_s_s_map(test_unet_f, self.patch_lib, unet_f.shape[-2:])
         img = lightings[5, :, :, :]
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
@@ -338,6 +332,7 @@ class DDIMInvUnified_Memory(Memory_Method):
         B, C, H, W = rgb_unet_f.shape
         train_rgb_unet_f = torch.mean(rgb_unet_f.view(-1, 6, C, H, W), dim=1)
         train_rgb_unet_f = train_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        self.patch_lib.append(train_rgb_unet_f.cpu())
         
         # normal  map
         nmap = nmap.to(self.device)
@@ -347,10 +342,8 @@ class DDIMInvUnified_Memory(Memory_Method):
         nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs, self.memory_T, self.memory_t)
         B, C, H, W = nmap_unet_f.shape
         train_nmap_unet_f = nmap_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        self.nmap_patch_lib.append(train_nmap_unet_f.cpu())
 
-        # combine
-        train_unet_f = torch.cat((train_rgb_unet_f, train_nmap_unet_f), dim = 1)
-        self.patch_lib.append(train_unet_f.cpu())
     @ torch.no_grad()
     def predict(self, i, lightings, nmap, text_prompt, gt, label):
         text_emb = self.get_text_embedding(text_prompt, 1)
@@ -364,6 +357,7 @@ class DDIMInvUnified_Memory(Memory_Method):
         B, C, H, W = rgb_unet_f.shape
         test_rgb_unet_f = torch.mean(rgb_unet_f.view(-1, 6, C, H, W), dim=1)
         test_rgb_unet_f = test_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        rgb_s, rgb_smap = self.compute_s_s_map(test_rgb_unet_f, self.patch_lib, rgb_unet_f.shape[-2:])
         
         # nromal map
         nmap = nmap.to(self.device)
@@ -373,9 +367,11 @@ class DDIMInvUnified_Memory(Memory_Method):
         nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs, self.test_T, self.test_t)
         B, C, H, W = nmap_unet_f.shape
         test_nmap_unet_f = nmap_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
-        test_unet_f = torch.cat((test_rgb_unet_f, test_nmap_unet_f), dim = 1)
-        
-        s, smap = self.compute_s_s_map(test_unet_f, nmap_unet_f.shape[-2:])
+        nmap_s, nmap_smap = self.compute_s_s_map(test_nmap_unet_f, self.nmap_patch_lib, nmap_unet_f.shape[-2:])
+        print(rgb_s)
+        print(nmap_s)
+        smap = rgb_smap + nmap_smap
+        s = rgb_s + nmap_s
         img = lightings[5, :, :, :]
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
@@ -547,7 +543,7 @@ class DirectInv_Memory(Memory_Method):
         test_unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1)
         test_unet_f = test_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
 
-        s, smap = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
+        s, smap = self.compute_s_s_map(test_unet_f, self.patch_lib, unet_f.shape[-2:])
         img = lightings[5, :, :, :]
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
@@ -681,7 +677,7 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
         test_unet_f = test_unet_f.reshape(C, -1).T
         
         # s, s_map = self.condition_optimization(test_unet_f, noisy_latents, nmaps, encoder_hidden_states)
-        s, s_map = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
+        s, s_map = self.compute_s_s_map(test_unet_f, self.patch_lib, unet_f.shape[-2:])
         self.image_list.append(t2np(lightings[5]))
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
@@ -802,7 +798,7 @@ class ControlNet_DirectInv_Memory(Memory_Method):
         test_unet_f = test_unet_f.reshape(C, -1).T
         
         # s, s_map = self.condition_optimization(test_unet_f, noisy_latents, nmaps, encoder_hidden_states)
-        s, s_map = self.compute_s_s_map(test_unet_f, unet_f.shape[-2:])
+        s, s_map = self.compute_s_s_map(test_unet_f, self.patch_lib, unet_f.shape[-2:])
         self.image_list.append(t2np(lightings[5]))
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
