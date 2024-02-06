@@ -55,12 +55,20 @@ class Base_Method():
         self.pixel_labels = list()
         self.predictions = []
         self.gts = []
+        self.nmap_image_preds = []
+        self.rgb_image_preds = []
+        self.nmap_pixel_preds = []
+        self.rgb_pixel_preds = []
 
-    def add_sample_to_mem_bank(self, lightings):
-        raise NotImplementedError
+
+    def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
+        pass
+    
+    def alginment(self, lightings, nmap, text_prompt):
+        pass
     
     def predict(self, item, lightings, gt, label):
-        raise NotImplementedError
+        pass
     
     def calculate_metrics(self):
 
@@ -89,7 +97,32 @@ class Base_Method():
         gt_mask = np.squeeze(np.array(self.pixel_labels, dtype=np.bool), axis=1)
         
         visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, self.cls_path)
-
+        
+    def cal_alignment(self):
+        # nmap distribution
+        nmap = np.array(self.nmap_pixel_preds)
+        non_zero_indice = np.nonzero(nmap)
+        non_zero_nmap = nmap[non_zero_indice]
+        nmap_mean = np.mean(non_zero_nmap)
+        nmap_std = np.std(non_zero_nmap)
+        nmap_lower = nmap_mean - 3 * nmap_std
+        nmap_upper = nmap_mean + 3 * nmap_std
+        # RGB distribution
+        rgb_map = np.array(self.rgb_pixel_preds)
+        non_zero_indice = np.nonzero(rgb_map)
+        non_zero_rgb_map = rgb_map[non_zero_indice]
+        rgb_mean = np.mean(non_zero_rgb_map)
+        rgb_std = np.std(non_zero_rgb_map)
+        rgb_lower = rgb_mean - 3 * rgb_std
+        rgb_upper = rgb_mean + 3 * rgb_std
+        
+        self.weight = (nmap_upper - nmap_lower) / (rgb_upper - rgb_lower)
+        self.bias = nmap_lower - self.weight * rgb_lower
+        # new_rgb_map = rgb_map * self.weight  + self.bias
+        # total_score = np.maximum(new_rgb_map, sdf_map)
+        # visualize_smap_distribute(total_score, sdf_map, rgb_map, new_rgb_map, self.image_size, output_dir)
+        # return self.weight, self.bias
+    
 class DDIM_Method(Base_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)

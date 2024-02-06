@@ -66,7 +66,7 @@ parser.add_argument("--num_opt_steps", type=int, default=3)
 parser.add_argument("--guidance_scale", type=float, default=7.5)
 
 # 1000, 20, 7.5, 3
-DEBUG = False
+DEBUG = True
 # Controlnet Model Setup
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
 parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
@@ -78,7 +78,7 @@ else:
     # FILE_NAME = "ddiminv_unet_4thlayers_noise1_textpromptnormal"
     # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_loop{args.num_opt_steps}_gdscale{args.guidance_scale}_clsprompt"
     # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_memory{args.memory_intensity}_FeatureLoss_clstxt_method1"
-    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_FeatureLoss_clstxt_DualMemory"
+    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_FeatureLoss_clstxt_Alignment"
 cuda_idx = str(args.CUDA)
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= cuda_idx
@@ -118,6 +118,8 @@ def run_eyecandies(args):
         runner = Runner(args, cls)
         if "memory" in args.method_name:
             runner.fit()
+        # if "unified" in args.method_name:
+        #     runner.alignment()
         image_rocaucs, pixel_rocaucs, au_pros, rec_loss = runner.evaluate()
         image_rocaucs_df[cls.title()] = image_rocaucs_df['Method'].map(image_rocaucs)
         pixel_rocaucs_df[cls.title()] = pixel_rocaucs_df['Method'].map(pixel_rocaucs)

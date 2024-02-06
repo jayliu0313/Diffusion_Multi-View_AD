@@ -21,14 +21,16 @@ class Memory_Method(DDIM_Method):
         self.test_T = args.test_T
         self.test_t = args.test_t
         
-    def compute_s_s_map(self, patch, patch_lib, feature_map_dims):
+    def compute_s_s_map(self, patch, patch_lib, feature_map_dims, mode="testing"):
         patch_lib = patch_lib.to(self.device)
+        patch = (patch - torch.mean(patch_lib))/torch.std(patch_lib)
+        
         dist = torch.cdist(patch, patch_lib)
-        # print(self.patch_lib.shape)
-        min_val, min_idx = torch.min(dist, dim=1)
-        # print(min_idx.shape)
-        # print(min_idx)
-        # a = self.patch_lib[min_idx]
+        if mode == "testing":
+            min_val, min_idx = torch.min(dist, dim=1)
+        else:
+            min_val, min_idx = torch.topk(dist, k=2, largest=False)
+            min_val = min_val[:, 1]
         
         s_star = torch.max(min_val)
         
@@ -39,8 +41,15 @@ class Memory_Method(DDIM_Method):
     
     def run_coreset(self):
         self.patch_lib = torch.cat(self.patch_lib, 0)
+        self.patch_mean = torch.mean(self.patch_lib)
+        self.patch_std = torch.std(self.patch_lib)
+        self.patch_lib = (self.patch_lib - self.patch_mean)/self.patch_std
+        
         if self.nmap_patch_lib:
-           self.nmap_patch_lib = torch.cat(self.nmap_patch_lib, 0)
+            self.nmap_patch_lib = torch.cat(self.nmap_patch_lib, 0)
+            self.nmap_patch_mean = torch.mean(self.nmap_patch_lib)
+            self.nmap_patch_std = torch.std(self.nmap_patch_lib)
+            self.nmap_patch_lib = (self.nmap_patch_lib - self.nmap_patch_mean)/self.nmap_patch_std
             
         if self.f_coreset < 1:
             self.coreset_idx = self.get_coreset_idx_randomp(self.patch_lib,
@@ -344,6 +353,37 @@ class DDIMInvUnified_Memory(Memory_Method):
         train_nmap_unet_f = nmap_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
         self.nmap_patch_lib.append(train_nmap_unet_f.cpu())
 
+    def predict_align_data(self, lightings, nmap, text_prompt):
+        text_emb = self.get_text_embedding(text_prompt, 1)
+        # rgb
+        lightings = lightings.to(self.device)
+        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        rgb_latents = self.image2latents(lightings)
+        bsz = rgb_latents.shape[0]
+        rgb_text_embs = text_emb.repeat(bsz, 1, 1)
+        rgb_unet_f = self.get_unet_f(rgb_latents, rgb_text_embs, self.test_T, self.test_t)
+        B, C, H, W = rgb_unet_f.shape
+        test_rgb_unet_f = torch.mean(rgb_unet_f.view(-1, 6, C, H, W), dim=1)
+        test_rgb_unet_f = test_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        rgb_s, rgb_smap = self.compute_s_s_map(test_rgb_unet_f, self.patch_lib, rgb_unet_f.shape[-2:], mode="alginment")
+        
+        # nromal map
+        nmap = nmap.to(self.device)
+        nmap_latents = self.image2latents(nmap)
+        bsz = nmap_latents.shape[0]
+        nmap_text_embs = text_emb.repeat(bsz, 1, 1)
+        nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs, self.test_T, self.test_t)
+        B, C, H, W = nmap_unet_f.shape
+        test_nmap_unet_f = nmap_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+        nmap_s, nmap_smap = self.compute_s_s_map(test_nmap_unet_f, self.nmap_patch_lib, nmap_unet_f.shape[-2:], mode="alginment")
+
+        # image_level
+        self.nmap_image_preds.append(nmap_s.numpy())
+        self.rgb_image_preds.append(rgb_s.numpy())
+        # pixel_level
+        self.rgb_pixel_preds.extend(rgb_smap.flatten().numpy())
+        self.nmap_pixel_preds.extend(nmap_smap.flatten().numpy())
+
     @ torch.no_grad()
     def predict(self, i, lightings, nmap, text_prompt, gt, label):
         text_emb = self.get_text_embedding(text_prompt, 1)
@@ -368,15 +408,16 @@ class DDIMInvUnified_Memory(Memory_Method):
         B, C, H, W = nmap_unet_f.shape
         test_nmap_unet_f = nmap_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
         nmap_s, nmap_smap = self.compute_s_s_map(test_nmap_unet_f, self.nmap_patch_lib, nmap_unet_f.shape[-2:])
-        print(rgb_s)
-        print(nmap_s)
-        smap = rgb_smap + nmap_smap
+
+        pixel_map = rgb_smap + nmap_smap
+        print("rgb score:", rgb_s)
+        print("nmap_s score:", nmap_s)
         s = rgb_s + nmap_s
         img = lightings[5, :, :, :]
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
         self.image_list.append(t2np(img))
-        self.pixel_preds.append(t2np(smap))
+        self.pixel_preds.append(t2np(pixel_map))
         self.pixel_labels.extend(t2np(gt))
 
 class DDIMInvRGBNmap_Memory(Memory_Method):

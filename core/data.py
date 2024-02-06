@@ -382,14 +382,14 @@ class ValNmap(Dataset):
         nmap = self.rgb_transform(nmap)
         return nmap
 
-def test_lightings_loader(args, cls, split):
+def test_lightings_loader(args, cls, split, batch_size, shuffle=False):
     if split == 'memory':
         dataset = MemoryLightings(cls, args.image_size, args.data_path)
-        data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, drop_last=False,
+        data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=args.workers, drop_last=False,
                                 pin_memory=True)
     elif split == 'test':
         dataset = TestLightings(cls, args.image_size, args.data_path)
-        data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=False, num_workers=args.workers, drop_last=False,
+        data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=args.workers, drop_last=False,
                                 pin_memory=True)
     return data_loader
 

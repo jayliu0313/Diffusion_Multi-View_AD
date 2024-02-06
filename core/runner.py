@@ -44,7 +44,7 @@ class Runner():
         self.method_name = args.method_name
     
     def fit(self):
-        dataloader = test_lightings_loader(self.args, self.cls, "memory")
+        dataloader = test_lightings_loader(self.args, self.cls, "memory", self.args.batch_size, False)
         with torch.no_grad():
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
                 # if i == 5:
@@ -52,11 +52,21 @@ class Runner():
                 text_prompt = f'A photo of a {self.cls}'
                 # text_prompt = ""
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
-      
-        self.method.run_coreset()
+            self.method.run_coreset()
 
+    def alignment(self):
+        dataloader = test_lightings_loader(self.args, self.cls, "memory", 1, True)
+        with torch.no_grad():
+            print(f'Computing weight and bias for alignment')
+            for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
+                if i == 25:
+                    break  
+                text_prompt = f'A photo of a {self.cls}'  
+                self.method.predict_align_data(lightings, nmap, text_prompt)
+            self.method.cal_alignment()
+        
     def evaluate(self):
-        dataloader = test_lightings_loader(self.args, self.cls, "test")
+        dataloader = test_lightings_loader(self.args, self.cls, "test", 1, False)
         
         for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader)):
             # if i == 5:
