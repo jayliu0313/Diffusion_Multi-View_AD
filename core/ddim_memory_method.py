@@ -21,11 +21,10 @@ class Memory_Method(DDIM_Method):
         self.test_T = args.test_T
         self.test_t = args.test_t
         
-    def compute_s_s_map(self, patch, patch_lib, feature_map_dims, mode="testing"):
+    def compute_s_s_map(self, patch, patch_lib, feature_map_dims, mode="testing", p=2):
         patch_lib = patch_lib.to(self.device)
-        patch = (patch - torch.mean(patch_lib))/torch.std(patch_lib)
         
-        dist = torch.cdist(patch, patch_lib)
+        dist = torch.cdist(patch, patch_lib, p=p)
         if mode == "testing":
             min_val, min_idx = torch.min(dist, dim=1)
         else:
@@ -39,18 +38,20 @@ class Memory_Method(DDIM_Method):
         s_map = self.blur(s_map.to('cpu'))
         return s_star.to('cpu'), s_map
     
+    def compute_cosine_score(self, rgb_feat, nmap_feat, feature_map_dims):
+        cos_score = 1 - self.cos(rgb_feat, nmap_feat)
+        s_star = torch.max(cos_score)
+        s_map = cos_score.view(1, 1, *feature_map_dims)
+        s_map = torch.nn.functional.interpolate(s_map, size=(self.image_size, self.image_size), mode='bilinear')
+        s_map = self.blur(s_map.to('cpu'))
+        return s_star.to('cpu'), s_map
+    
     def run_coreset(self):
         self.patch_lib = torch.cat(self.patch_lib, 0)
-        self.patch_mean = torch.mean(self.patch_lib)
-        self.patch_std = torch.std(self.patch_lib)
-        self.patch_lib = (self.patch_lib - self.patch_mean)/self.patch_std
         
         if self.nmap_patch_lib:
             self.nmap_patch_lib = torch.cat(self.nmap_patch_lib, 0)
-            self.nmap_patch_mean = torch.mean(self.nmap_patch_lib)
-            self.nmap_patch_std = torch.std(self.nmap_patch_lib)
-            self.nmap_patch_lib = (self.nmap_patch_lib - self.nmap_patch_mean)/self.nmap_patch_std
-            
+    
         if self.f_coreset < 1:
             self.coreset_idx = self.get_coreset_idx_randomp(self.patch_lib,
                                                             n=int(self.f_coreset * self.patch_lib.shape[0]),
@@ -298,7 +299,8 @@ class DDIMInvNmap_Memory(Memory_Method):
 class DDIMInvUnified_Memory(Memory_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
-
+        self.weight = 1
+        self.bias = 0
     @torch.no_grad()
     def ddim_loop(self, latents, text_emb, target_timestep):
         latents = latents.clone().detach()
@@ -312,7 +314,7 @@ class DDIMInvUnified_Memory(Memory_Method):
                 return latents, t
     
     @torch.no_grad() 
-    def get_unet_f(self, latents, text_emb, start_t, end_t):
+    def get_unet_f(self, latents, text_emb, start_t, end_t, layer=3):
         """
         start_t: Get noise latent at this timestep by using DDIM Inversion.
         end_t: Sampling noisy latent util this timestep.
@@ -326,8 +328,31 @@ class DDIMInvUnified_Memory(Memory_Method):
             timestep = torch.tensor(t.item(), device=self.device)
             pred = self.unet(noisy_latents, timestep, text_emb)
             noisy_latents = self.noise_scheduler.step(pred['sample'], t.item(), noisy_latents)["prev_sample"]    
-        return pred['up_ft'][3]
+        return pred['up_ft'][layer]
     
+    # def realtime_alignment(self):
+    #     nmap = np.array(nmap_smap)
+    #     non_zero_indice = np.nonzero(nmap)
+    #     non_zero_nmap = nmap[non_zero_indice]
+    #     nmap_mean = np.mean(non_zero_nmap)
+    #     nmap_std = np.std(non_zero_nmap)
+    #     nmap_lower = nmap_mean - 3 * nmap_std
+    #     nmap_upper = nmap_mean + 3 * nmap_std
+    #     # RGB distribution
+    #     rgb_map = np.array(rgb_smap)
+    #     non_zero_indice = np.nonzero(rgb_map)
+    #     non_zero_rgb_map = rgb_map[non_zero_indice]
+    #     rgb_mean = np.mean(non_zero_rgb_map)
+    #     rgb_std = np.std(non_zero_rgb_map)
+    #     rgb_lower = rgb_mean - 3 * rgb_std
+    #     rgb_upper = rgb_mean + 3 * rgb_std
+        
+    #     self.weight = (nmap_upper - nmap_lower) / (rgb_upper - rgb_lower)
+    #     self.bias = nmap_lower - self.weight * rgb_lower
+        
+
+        
+        
     def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
         text_emb = self.get_text_embedding(text_prompt, 1)
         
@@ -399,7 +424,7 @@ class DDIMInvUnified_Memory(Memory_Method):
         test_rgb_unet_f = test_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
         rgb_s, rgb_smap = self.compute_s_s_map(test_rgb_unet_f, self.patch_lib, rgb_unet_f.shape[-2:])
         
-        # nromal map
+        # normal map
         nmap = nmap.to(self.device)
         nmap_latents = self.image2latents(nmap)
         bsz = nmap_latents.shape[0]
@@ -408,17 +433,23 @@ class DDIMInvUnified_Memory(Memory_Method):
         B, C, H, W = nmap_unet_f.shape
         test_nmap_unet_f = nmap_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
         nmap_s, nmap_smap = self.compute_s_s_map(test_nmap_unet_f, self.nmap_patch_lib, nmap_unet_f.shape[-2:])
-
-        pixel_map = rgb_smap + nmap_smap
-        print("rgb score:", rgb_s)
-        print("nmap_s score:", nmap_s)
-        s = rgb_s + nmap_s
+        
+        # s, pixel_map = self.compute_cosine_score(test_rgb_unet_f, test_nmap_unet_f, nmap_unet_f.shape[-2:])
+                # nmap distribution
+        
+        # print("rgb_s:", rgb_s * self.weight + self.bias)
+        # print("nmap_s:", nmap_s)
+        pixel_map = rgb_smap * self.weight + self.bias + nmap_smap
+        s = (rgb_s * self.weight + self.bias) + nmap_s
         img = lightings[5, :, :, :]
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
         self.image_list.append(t2np(img))
         self.pixel_preds.append(t2np(pixel_map))
         self.pixel_labels.extend(t2np(gt))
+        self.rgb_pixel_preds.extend(rgb_smap.flatten().numpy())
+        self.nmap_pixel_preds.extend(nmap_smap.flatten().numpy())
+        self.cal_alignment()
 
 class DDIMInvRGBNmap_Memory(Memory_Method):
     def __init__(self, args, cls_path):

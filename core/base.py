@@ -39,6 +39,7 @@ class Base_Method():
         self.score_type = args.score_type
         
         self.pdist = torch.nn.PairwiseDistance(p=2, eps= 1e-12)
+        self.cos = torch.nn.CosineSimilarity()
         self.average = torch.nn.AvgPool2d(3, stride=1)
         self.resize = torch.nn.AdaptiveAvgPool2d((28, 28))
         # self.blur = torch.Gua(4).to(self.device)
@@ -118,6 +119,8 @@ class Base_Method():
         
         self.weight = (nmap_upper - nmap_lower) / (rgb_upper - rgb_lower)
         self.bias = nmap_lower - self.weight * rgb_lower
+        print("weight:", self.weight)
+        print("bias:", self.bias)
         # new_rgb_map = rgb_map * self.weight  + self.bias
         # total_score = np.maximum(new_rgb_map, sdf_map)
         # visualize_smap_distribute(total_score, sdf_map, rgb_map, new_rgb_map, self.image_size, output_dir)

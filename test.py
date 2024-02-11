@@ -31,7 +31,7 @@ parser.add_argument("--load_vae_ckpt", default=None)
 # "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/train_VAE_stable-diffusion-v1-4_woDecomp_allcls/vae_best_ckpt.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/vae_stable-diffusion-v1-4_woDecomp/vae_decomp_best_ckpt.pth"
 
-parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_3cls/best_unet.pth")
+parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_allcls/best_unet.pth")
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_NullText_FeatureLossAllLayer_AllCls/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls/best_unet.pth"
@@ -66,7 +66,7 @@ parser.add_argument("--num_opt_steps", type=int, default=3)
 parser.add_argument("--guidance_scale", type=float, default=7.5)
 
 # 1000, 20, 7.5, 3
-DEBUG = True
+DEBUG = False
 # Controlnet Model Setup
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
 parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
@@ -78,7 +78,7 @@ else:
     # FILE_NAME = "ddiminv_unet_4thlayers_noise1_textpromptnormal"
     # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_loop{args.num_opt_steps}_gdscale{args.guidance_scale}_clsprompt"
     # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_memory{args.memory_intensity}_FeatureLoss_clstxt_method1"
-    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_FeatureLoss_clstxt_Alignment"
+    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_ADDADD_realtimeAlignment_ALLCLS"
 cuda_idx = str(args.CUDA)
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]= cuda_idx
@@ -96,14 +96,14 @@ def run_eyecandies(args):
         classes = [
         'CandyCane',
         'ChocolateCookie',
-        # 'ChocolatePraline',
-        # 'Confetto',
+        'ChocolatePraline',
+        'Confetto',
         'GummyBear',
-        # 'HazelnutTruffle',
-        # 'LicoriceSandwich',
-        # 'Lollipop',
-        # 'Marshmallow',
-        # 'PeppermintCandy'
+        'HazelnutTruffle',
+        'LicoriceSandwich',
+        'Lollipop',
+        'Marshmallow',
+        'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = []

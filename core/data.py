@@ -6,6 +6,7 @@ from einops import repeat, rearrange
 import glob
 from torch.utils.data import Dataset
 from utils.mvtec3d_util import *
+from utils.utils import CutPaste
 from torch.utils.data import DataLoader
 import numpy as np
 import random
@@ -124,10 +125,12 @@ class TestLightings(BaseDataset):
 
 # not use
 class MemoryLightings(BaseDataset):
-    def __init__(self, class_name, img_size, dataset_path):
+    def __init__(self, class_name, img_size, dataset_path, is_alignment=False):
         super().__init__(split="train", class_name=class_name, img_size=img_size, dataset_path=dataset_path)
         self.data_paths = self.load_dataset()  # self.labels => good : 0, anomaly : 1
-
+        self.cutpaste = CutPaste(type="custom")
+        self.is_alignment = is_alignment
+        
     def load_dataset(self):
         data_tot_paths = []
     
@@ -161,18 +164,22 @@ class MemoryLightings(BaseDataset):
         normal_path = img_path[1]
         text_prompt = "a photo of a " + self.cls 
         # text_prompt = ""
-        normal = Image.open(normal_path).convert('RGB')
-        
-        normal_map = self.rgb_transform(normal)
+        normal_map = Image.open(normal_path).convert('RGB')
+        n_map = []
+        n_map.append(normal_map)
         images = []
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
-            
-            img = self.rgb_transform(img)
-            # img = img * mask
             images.append(img)
-        images = torch.stack(images)
-        return images, normal_map, text_prompt
+        if self.is_alignment and idx % 2 == 0:
+            images = self.cutpaste(images)
+            n_map = self.cutpaste(n_map)
+            
+        aug_imgs = [self.rgb_transform(img) for img in images]
+        aug_nmap = [self.rgb_transform(nmap) for nmap in n_map]
+        aug_imgs = torch.stack(aug_imgs)
+        aug_nmap = torch.cat(aug_nmap)
+        return aug_imgs, aug_nmap, text_prompt
 
 # load training image   
 class TrainLightings(Dataset):
@@ -382,14 +389,18 @@ class ValNmap(Dataset):
         nmap = self.rgb_transform(nmap)
         return nmap
 
-def test_lightings_loader(args, cls, split, batch_size, shuffle=False):
+def test_lightings_loader(args, cls, split):
     if split == 'memory':
-        dataset = MemoryLightings(cls, args.image_size, args.data_path)
-        data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=args.workers, drop_last=False,
+        dataset = MemoryLightings(cls, args.image_size, args.data_path, False)
+        data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, drop_last=False,
+                                pin_memory=True)
+    elif split == 'memory_align':
+        dataset = MemoryLightings(cls, args.image_size, args.data_path, True)
+        data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=True, num_workers=args.workers, drop_last=False,
                                 pin_memory=True)
     elif split == 'test':
         dataset = TestLightings(cls, args.image_size, args.data_path)
-        data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=args.workers, drop_last=False,
+        data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=False, num_workers=args.workers, drop_last=False,
                                 pin_memory=True)
     return data_loader
 
