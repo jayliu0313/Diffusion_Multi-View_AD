@@ -15,23 +15,19 @@ def log_args(args):
     log_file.write(f'VAE CheckPoint: {args.load_vae_ckpt} \n')
     log_file.write(f'Unet CheckPoint: {args.load_unet_ckpt} \n')
     log_file.write(f'ControlNet CheckPoint: {args.load_controlnet_ckpt} \n')
-    log_file.write(f'BackBone CheckPoint: {args.load_backbone_ckpt} \n')
-    log_file.write(f'Nmap CheckPoint: {args.load_nmap_ckpt_path} \n\n')
-
     log_file.write(f'Diffusion ID: {args.diffusion_id} \n')
     log_file.write(f'Revision: {args.revision} \n\n')
 
+    log_file.write(f'Distance Function: {args.dist_function} \n\n')
+
     log_file.write(f'Noise Intensity: {args.noise_intensity} \n')
-    
-    log_file.write(f'Memory T: {args.memory_T} \n')
-    log_file.write(f'Memory t: {args.memory_t} \n')
-    log_file.write(f'Test T: {args.test_T} \n')
-    log_file.write(f'Test t: {args.test_t} \n')
-    
-    log_file.write(f'Step Size: {args.step_size} \n\n')
+    log_file.write(f"memory_T :  {args.memory_T} \n")  
+    log_file.write(f"memory_t    {args.memory_t} \n")  
+    log_file.write(f"test_T      {args.test_T} \n")    
+    log_file.write(f"test_t      {args.test_t} \n")  
+    log_file.write(f'Step Size {args.noise_intensity} \n')
 
     log_file.write(f'Opt Max Steps: {args.opt_max_steps} \n')
-    log_file.write(f'Num Opt Steps: {args.num_opt_steps} \n')
     log_file.write(f'Guidance Scale: {args.guidance_scale} \n\n')
 
 def set_seeds(seed: int = 0) -> None:

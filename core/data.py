@@ -395,7 +395,7 @@ def test_lightings_loader(args, cls, split):
         data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, drop_last=False,
                                 pin_memory=True)
     elif split == 'memory_align':
-        dataset = MemoryLightings(cls, args.image_size, args.data_path, True)
+        dataset = MemoryLightings(cls, args.image_size, args.data_path, False)
         data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=True, num_workers=args.workers, drop_last=False,
                                 pin_memory=True)
     elif split == 'test':

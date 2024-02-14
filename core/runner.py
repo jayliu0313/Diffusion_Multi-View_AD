@@ -7,12 +7,13 @@ import os
 import os.path as osp
 
 class Runner():
-    def __init__(self, args, cls):
+    def __init__(self, args, cls, modality_names):
         cls_path = os.path.join(args.output_dir, cls)
         if not os.path.exists(cls_path):
             os.makedirs(cls_path)
 
         self.args = args
+        self.modality_names = modality_names
         
         if args.method_name == "ddim_memory":
             self.method = DDIM_Memory(args, cls_path)
@@ -20,10 +21,10 @@ class Runner():
             self.method = DDIMInvRGB_Memory(args, cls_path)
         elif args.method_name == "ddiminvnmap_memory":
             self.method = DDIMInvNmap_Memory(args, cls_path)
-        elif args.method_name == "ddiminvrgbnmap_memory":
-            self.method = DDIMInvRGBNmap_Memory(args, cls_path)
         elif args.method_name == "ddiminvunified_memory":
             self.method = DDIMInvUnified_Memory(args, cls_path)
+        elif args.method_name == "ddiminvunified_multimemory":
+            self.method = DDIMInvUnified_MultiMemory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
         elif args.method_name == "controlnet_rec":
@@ -32,10 +33,6 @@ class Runner():
             self.method = DDIM_Rec(args, cls_path)
         elif args.method_name == "nullinv_rec":
             self.method = NULLInv_Rec(args, cls_path)
-        elif args.method_name == "controlnet_directinv_memory":
-            self.method = ControlNet_DirectInv_Memory(args, cls_path)
-        elif args.method_name == "directinv_memory":
-            self.method = DirectInv_Memory(args, cls_path)
         else:
             return TypeError
         
@@ -50,7 +47,6 @@ class Runner():
                 # if i == 5:
                 #     break
                 text_prompt = f'A photo of a {self.cls}'
-                # text_prompt = ""
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
             self.method.run_coreset()
 
@@ -67,31 +63,22 @@ class Runner():
         
     def evaluate(self):
         dataloader = test_lightings_loader(self.args, self.cls, "test")
-        
-        for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader)):
-            # if i == 5:
-            #     break
+        for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader, desc="Extracting test features")):
             text_prompt = f'A photo of a {self.cls}'
             self.method.predict(i, images, nmap, text_prompt, gt, label)
 
-        image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics()
-        total_rec_loss = self.method.get_rec_loss()
-        rec_mean_loss = total_rec_loss / len(dataloader)
-
-        self.method.visualizae_heatmap()
-
+        if self.args.viz:
+            self.method.visualizae_heatmap()
+        
         image_rocaucs = dict()
         pixel_rocaucs = dict()
         au_pros = dict()
         rec_losses = dict()
-        image_rocaucs[self.method_name] = round(image_rocauc, 3)
-        pixel_rocaucs[self.method_name] = round(pixel_rocauc, 3)
-        au_pros[self.method_name] = round(au_pro, 3)
-        rec_losses[self.method_name] = round(rec_mean_loss, 6)
-
-        self.log_file.write(
-            f'Class: {self.cls} {self.method_name}, Image ROCAUC: {image_rocauc:.3f}, Pixel ROCAUC: {pixel_rocauc:.3f}, AUPRO:  {au_pro:.3f}\n'
-            f'Reconstruction Loss: {rec_mean_loss}'
-        )
+        for modality_name in self.modality_names:
+            image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics(modality_name)
+            image_rocaucs[modality_name] = round(image_rocauc, 3)
+            pixel_rocaucs[modality_name] = round(pixel_rocauc, 3)
+            au_pros[modality_name] = round(au_pro, 3)
+            self.log_file.write(f'Class: {self.cls} {modality_name}, Image ROCAUC: {image_rocauc:.3f}, Pixel ROCAUC: {pixel_rocauc:.3f}, AUPRO:  {au_pro:.3f}\n')
         self.log_file.close()
         return image_rocaucs, pixel_rocaucs, au_pros, rec_losses
