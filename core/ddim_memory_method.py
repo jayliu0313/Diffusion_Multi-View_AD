@@ -390,9 +390,9 @@ class DDIMInvUnified_MultiMemory(Memory_Method):
         self.bias = 0
         self.multi_patch_lib = []
         
-    def compute_mul_s_s_map(self, mean_patch, multi_patch, feature_map_dims, mode="testing", p=2):
+    def compute_mul_s_s_map(self, multi_patch, feature_map_dims, mode="testing", k=2, p=2):
         patch_lib = self.patch_lib.to(self.device)
-        
+        mean_patch = torch.mean(multi_patch, dim=1)
         if self.dist_fun == 'l2_dist':
             dist = torch.cdist(mean_patch, patch_lib, p=p)
         elif self.dist_fun == 'cosine':
@@ -401,7 +401,7 @@ class DDIMInvUnified_MultiMemory(Memory_Method):
         if mode == "testing":
             min_val, min_idx = torch.min(dist, dim=1)
         else:
-            min_val, min_idx = torch.topk(dist, k=2, largest=False)
+            min_val, min_idx = torch.topk(dist, k=k, largest=False)
             min_val = min_val[:, 1]
             min_idx = min_idx[:, 1]
         mem_multi_patch = self.multi_patch_lib[min_idx]
@@ -438,10 +438,10 @@ class DDIMInvUnified_MultiMemory(Memory_Method):
         B, C, H, W = rgb_unet_f.shape
 
         multi_rgb_unet_f = rgb_unet_f.view(-1, 6, C, H, W)
-        mean_rgb_unet_f = torch.mean(multi_rgb_unet_f, dim=1)
-        mean_rgb_unet_f = mean_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
+    
         
         multi_rgb_unet_f = multi_rgb_unet_f.permute(0, 3, 4, 1, 2).reshape((B // 6) * H * W, 6, C)
+        mean_rgb_unet_f = torch.mean(multi_rgb_unet_f, dim=1)
         self.multi_patch_lib.append(multi_rgb_unet_f.cpu())
         self.patch_lib.append(mean_rgb_unet_f.cpu())
         
@@ -467,11 +467,9 @@ class DDIMInvUnified_MultiMemory(Memory_Method):
         B, C, H, W = rgb_unet_f.shape
         
         multi_rgb_unet_f = rgb_unet_f.view(-1, 6, C, H, W)
-        mean_rgb_unet_f = torch.mean(multi_rgb_unet_f, dim=1)
-        mean_rgb_unet_f = mean_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
         
         multi_rgb_unet_f = multi_rgb_unet_f.permute(0, 3, 4, 1, 2).reshape((B // 6) * H * W, 6, C)
-        rgb_s, rgb_smap = self.compute_mul_s_s_map(mean_rgb_unet_f, multi_rgb_unet_f, rgb_unet_f.shape[-2:], mode="alginment")
+        rgb_s, rgb_smap = self.compute_mul_s_s_map(multi_rgb_unet_f, rgb_unet_f.shape[-2:], mode="alginment")
         
         # nromal map
         nmap = nmap.to(self.device)
@@ -502,10 +500,8 @@ class DDIMInvUnified_MultiMemory(Memory_Method):
         rgb_unet_f = self.get_unet_f(rgb_latents, rgb_text_embs, self.test_T, self.test_t)
         B, C, H, W = rgb_unet_f.shape
         multi_rgb_unet_f = rgb_unet_f.view(-1, 6, C, H, W)
-        mean_rgb_unet_f = torch.mean(multi_rgb_unet_f, dim=1)
-        mean_rgb_unet_f = mean_rgb_unet_f.permute(1, 0, 2, 3).reshape(C, -1).T
         multi_rgb_unet_f = multi_rgb_unet_f.permute(0, 3, 4, 1, 2).reshape((B // 6) * H * W, 6, C)
-        rgb_s, rgb_smap = self.compute_mul_s_s_map(mean_rgb_unet_f, multi_rgb_unet_f, rgb_unet_f.shape[-2:], mode="testing")
+        rgb_s, rgb_smap = self.compute_mul_s_s_map(multi_rgb_unet_f, rgb_unet_f.shape[-2:], mode="testing")
         
         # normal map
         nmap = nmap.to(self.device)

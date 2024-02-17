@@ -20,10 +20,11 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-parser.add_argument('--ckpt_path', default="checkpoints/controlnet_model/")
+parser.add_argument('--ckpt_path', default="checkpoints/controlnet_model/NmapControlnet_RgbUnet_ClsTxt_allcls")
 parser.add_argument('--image_size', default=256, type=int)
-parser.add_argument('--batch_size', default=2, type=int)
+parser.add_argument('--batch_size', default=16, type=int)
 parser.add_argument("--save_epoch", type=int, default=3)
+parser.add_argument('--load_unet_ckpt', default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth")
 
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
@@ -106,10 +107,16 @@ class trainControlnet():
                 args.diffusion_id,
                 subfolder="unet",
                 revision=args.revision)
-
+        
+        if os.path.isfile(args.load_unet_ckpt):
+            self.unet.load_state_dict(torch.load(args.load_unet_ckpt, map_location=self.device))
+            print("Load Diffusion Model Checkpoint!!")
+        else:
+            print("Not Load Diffusion Model Checkpoint")
+            
         # Setting ControlNet Model 
         self.controllora: ControlLoRAModel
-        if args.controlnet_id != None:
+        if os.path.isfile(args.controlnet_id):
             print("Loading existing controllora weights")
             self.controllora = ControlLoRAModel.from_pretrained(args.controlnet_id, subfolder="controlnet")
             self.controllora.tie_weights(self.unet)
@@ -176,19 +183,20 @@ class trainControlnet():
         for images, normal_map, text_prompt in tqdm(self.val_dataloader, desc="Validation"):
             
             with torch.no_grad():
-                lightings = images.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
-                nmaps = normal_map.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
-
+                image = images[:, 5, :, :]
+                lighting = image.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
+                # nmaps = normal_map.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
+                nmaps = normal_map.to(self.device)
                 # Convert images to latent space
-                latents = self.image2latents(lightings)
+                latents = self.image2latents(nmaps)
                 # Add noise to the latents according to the noise magnitude at each timestep
                 noise, timesteps, noisy_latents = self.forward_process(latents)
 
                 # Get CLIP embeddings
-                encoder_hidden_states = self.get_text_embedding(text_prompt, 6) # [bs * 6, 77, 768]
+                encoder_hidden_states = self.get_text_embedding(text_prompt, 1) # [bs * 6, 77, 768]
 
                 # Training ControlNet
-                condition_image = nmaps
+                condition_image = lighting
                 down_block_res_samples, mid_block_res_sample = self.controllora(
                     noisy_latents,
                     timesteps,
@@ -223,19 +231,21 @@ class trainControlnet():
             epoch_loss = 0.0
             for images, normal_map, text_prompt in tqdm(self.train_dataloader, desc="Training"):
                 self.optimizer.zero_grad()
-                lightings = images.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
-                nmaps = normal_map.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
-                
+                image = images[:, 5, :, :]
+                # print(image.shape)
+                lighting = image.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
+                # nmaps = normal_map.to(self.device).repeat_interleave(6, dim=0) # [bs * 6, 3, 256, 256]
+                nmaps = normal_map.to(self.device)
                 # Convert images to latent space
-                latents = self.image2latents(lightings)
+                latents = self.image2latents(nmaps)
                 # Add noise to the latents according to the noise magnitude at each timestep
                 noise, timesteps, noisy_latents = self.forward_process(latents) 
                 
                 # Get CLIP embeddings
-                encoder_hidden_states = self.get_text_embedding(text_prompt, 6) # [bs * 6, 77, 768]
+                encoder_hidden_states = self.get_text_embedding(text_prompt, 1) # [bs * 6, 77, 768]
                 
                 # Training ControlNet
-                condition_image = nmaps
+                condition_image = lighting
                 down_block_res_samples, mid_block_res_sample = self.controllora(
                     noisy_latents,
                     timesteps,

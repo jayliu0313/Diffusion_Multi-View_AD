@@ -9,7 +9,7 @@ from utils.utils import set_seeds, log_args
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 parser = argparse.ArgumentParser(description='test')
 
-DEBUG = True
+DEBUG = False
 
 # Dataset and environment setup
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
@@ -67,7 +67,7 @@ else:
     # FILE_NAME = "ddiminv_unet_4thlayers_noise1_textpromptnormal"
     # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_loop{args.num_opt_steps}_gdscale{args.guidance_scale}_clsprompt"
     # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_memory{args.memory_intensity}_FeatureLoss_clstxt_method1"
-    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_ADDADD_realtimeAlignment_ALLCLS"
+    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_ADDADD_Align_ALLCLS"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")

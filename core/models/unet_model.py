@@ -285,16 +285,3 @@ def build_unet(args):
         subfolder="unet",
         revision=args.revision)
     return unet
-
-def build_rgbnmap_unet(args):
-    unet = MyUNet2DConditionModel.from_pretrained(
-        args.diffusion_id,
-        subfolder="unet",
-        revision=args.revision)
-    # Modify input layer to have 1 additional input channels (pose)
-    weights = unet.conv_in.weight.clone()
-    unet.conv_in = nn.Conv2d(4 + 3, weights.shape[0], kernel_size=3, padding=(1, 1)) # input noise + n poses
-    with torch.no_grad():
-        unet.conv_in.weight[:, :4] = weights # original weights
-        unet.conv_in.weight[:, 4:] = torch.zeros(unet.conv_in.weight[:, 4:].shape) # new weights initialized to zero
-    return unet

@@ -11,7 +11,7 @@ from sklearn.metrics import roc_auc_score
 
 # Diffusion model
 from diffusers import DDIMScheduler
-from core.models.unet_model import build_unet, build_rgbnmap_unet
+from core.models.unet_model import build_unet
 from transformers import CLIPTextModel, AutoTokenizer
 from diffusers import AutoencoderKL
 from utils.ptp_utils import *
@@ -58,7 +58,6 @@ class Base_Method():
         self.rgb_image_preds = []
         self.nmap_pixel_preds = []
         self.rgb_pixel_preds = []
-
 
     def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
         pass
@@ -146,10 +145,8 @@ class DDIM_Method(Base_Method):
         print("num_inference_timesteps")
         print("ddim loop steps:", len(self.timesteps_list))
         print("Noise Intensity = ", self.timesteps_list)
-        if "rgbnmap" in args.method_name:
-            self.unet = build_rgbnmap_unet(args)
-        else:
-            self.unet = build_unet(args)
+
+        self.unet = build_unet(args)
         self.unet.to(self.device)
         self.vae = AutoencoderKL.from_pretrained(
             args.diffusion_id,
@@ -158,11 +155,11 @@ class DDIM_Method(Base_Method):
             torch_dtype=torch.float32
         ).to(self.device)
         
-        if args.load_unet_ckpt is not None:
+        if os.path.isfile(args.load_unet_ckpt):
             self.unet.load_state_dict(torch.load(args.load_unet_ckpt, map_location=self.device))
             print("Load Diffusion Model Checkpoint!!")
         
-        if args.load_vae_ckpt is not None:
+        if os.path.isfile(args.load_vae_ckpt):
             checkpoint_dict = torch.load(args.load_vae_ckpt, map_location=self.device)
             ## Load VAE checkpoint  
             if checkpoint_dict['vae'] is not None:
