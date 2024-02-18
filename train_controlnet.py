@@ -116,7 +116,7 @@ class trainControlnet():
             
         # Setting ControlNet Model 
         self.controllora: ControlLoRAModel
-        if os.path.isfile(args.controlnet_id):
+        if args.controlnet_id != None:
             print("Loading existing controllora weights")
             self.controllora = ControlLoRAModel.from_pretrained(args.controlnet_id, subfolder="controlnet")
             self.controllora.tie_weights(self.unet)
@@ -230,6 +230,7 @@ class trainControlnet():
         for epoch in range(self.num_train_epochs):
             epoch_loss = 0.0
             for images, normal_map, text_prompt in tqdm(self.train_dataloader, desc="Training"):
+                # print(text_prompt)
                 self.optimizer.zero_grad()
                 image = images[:, 5, :, :]
                 # print(image.shape)
@@ -283,7 +284,7 @@ class trainControlnet():
                 val_loss = self.log_validation() # Evaluate
                 if val_loss < val_best_loss:
                     val_best_loss = val_loss
-                    model_path = args.ckpt_path + f'/controlnet_epoch_{epoch}.pth'
+                    model_path = args.ckpt_path + f'/controlnet_best_ckpt.pth'
                     torch.save(self.controllora.state_dict(), model_path)
                     print("### Save Model ###")
     

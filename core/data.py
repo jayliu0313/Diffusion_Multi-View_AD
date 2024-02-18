@@ -100,7 +100,7 @@ class TestLightings(BaseDataset):
         img_path, gt = self.data_paths[idx], self.gt_paths[idx]
         rgb_path = img_path[0]
         normal_path = img_path[1]
-        text_prompt = "a photo of a " + self.cls
+        text_prompt = "A photo of a " + self.cls
         # text_prompt = ""
         normal = Image.open(normal_path).convert('RGB')
         
@@ -162,7 +162,7 @@ class MemoryLightings(BaseDataset):
         img_path = self.data_paths[idx]
         rgb_path = img_path[0]
         normal_path = img_path[1]
-        text_prompt = "a photo of a " + self.cls 
+        text_prompt = "A photo of a " + self.cls 
         # text_prompt = ""
         normal_map = Image.open(normal_path).convert('RGB')
         n_map = []
@@ -230,7 +230,7 @@ class TrainLightings(Dataset):
     def __getitem__(self, idx):
         img_path, label = self.data_paths[idx], self.labels[idx]
         cls = self.cls_list[idx]
-        text_prompt = "a photo of a " + cls
+        text_prompt = "A photo of a " + cls
         rgb_path = img_path[0]
         images = []
         # noise_images = []
@@ -297,7 +297,7 @@ class ValLightings(Dataset):
     def __getitem__(self, idx):
         img_path, label = self.data_paths[idx], self.labels[idx]
         cls = self.cls_list[idx]
-        text_prompt = "a photo of a " + cls
+        text_prompt = "A photo of a " + cls
         rgb_path = img_path[0]
         images = []
         # noise_images = []
