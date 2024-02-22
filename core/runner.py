@@ -1,7 +1,6 @@
 from core.data import test_lightings_loader
 from core.ddim_recconstruct_method import *
 from core.ddim_memory_method import *
-from core.ddim_mtmemory_method import *
 from tqdm import tqdm
 import torch
 import os
@@ -26,10 +25,6 @@ class Runner():
             self.method = DDIMInvUnified_Memory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
-        elif args.method_name == "ddiminvrgb_mtmemory":
-            self.method = DDIMInvRGB_MTMemory(args, cls_path)
-        elif args.method_name == "controlnet_ddiminv_mtmemory":
-            self.method = ControlNet_DDIMInv_MTMemory(args, cls_path)
         elif args.method_name == "controlnet_rec":
             self.method = ControlNet_Rec(args, cls_path)
         elif args.method_name == "ddim_rec":
@@ -47,8 +42,8 @@ class Runner():
         dataloader = test_lightings_loader(self.args, self.cls, "memory")
         with torch.no_grad():
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
-                # if i == 10:
-                #     break
+                if i == 3:
+                    break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
             self.method.run_coreset()

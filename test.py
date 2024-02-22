@@ -23,10 +23,10 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="ddiminvrgb_mtmemory", help=" \
+parser.add_argument('--method_name', default="ddiminvunified_memory", help=" \
 Reconstruction Base: controlnet_rec, ddim_rec, nullinv_rec, \
 DDIM Base: ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvunified_memory, controlnet_ddiminv_memory\
-Multi Time DDIM Base: ddiminvrgb_mtmemory, controlnet_ddiminv_mtmemory")
+")
 
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 parser.add_argument('--dist_function', type=str, default='l2_dist', help='l2_dist, cosine')
@@ -44,7 +44,7 @@ parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusio
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
 
 parser.add_argument("--noise_intensity", type=int, default=81)
-parser.add_argument("--multi_timesteps", type=int, default=[21, 81, 121])
+parser.add_argument("--multi_timesteps", type=int, default=[21,81])
 parser.add_argument("--step_size", type=int, default=20)
 
 # Controlnet Model Setup
@@ -55,7 +55,7 @@ args = parser.parse_args()
 if DEBUG == True:
     FILE_NAME = "Testing"
 else:
-    FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_ALLCLS_MAXLAST"
+    FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_ALLCLS_MinLAST_MULADD"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
