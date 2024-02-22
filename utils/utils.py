@@ -2,6 +2,7 @@ import os
 import numpy as np
 import random
 import torch
+import torch.nn.functional as nnf
 from torchvision import transforms
 from PIL import ImageFilter
 
@@ -19,16 +20,10 @@ def log_args(args):
     log_file.write(f'Revision: {args.revision} \n\n')
 
     log_file.write(f'Distance Function: {args.dist_function} \n\n')
-
+    
     log_file.write(f'Noise Intensity: {args.noise_intensity} \n')
-    log_file.write(f"memory_T :  {args.memory_T} \n")  
-    log_file.write(f"memory_t    {args.memory_t} \n")  
-    log_file.write(f"test_T      {args.test_T} \n")    
-    log_file.write(f"test_t      {args.test_t} \n")  
-    log_file.write(f'Step Size {args.noise_intensity} \n')
-
-    log_file.write(f'Opt Max Steps: {args.opt_max_steps} \n')
-    log_file.write(f'Guidance Scale: {args.guidance_scale} \n\n')
+    log_file.write(f'Step Size {args.step_size} \n')
+    log_file.write(f'Multi Timesteps: {args.multi_timesteps} \n')
 
 def set_seeds(seed: int = 0) -> None:
     np.random.seed(seed)
@@ -38,6 +33,12 @@ def set_seeds(seed: int = 0) -> None:
 def t2np(tensor):
     '''pytorch tensor -> numpy array'''
     return tensor.cpu().data.numpy() if tensor is not None else None
+
+def nxn_cos_sim(A, B, dim=1):
+    a_norm = nnf.normalize(A, p=2, dim=dim)
+    b_norm = nnf.normalize(B, p=2, dim=dim)
+    return torch.mm(a_norm, b_norm.transpose(0, 1))
+
 
 class KNNGaussianBlur(torch.nn.Module):
     def __init__(self, radius : int = 4):

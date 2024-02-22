@@ -1,6 +1,7 @@
 from core.data import test_lightings_loader
 from core.ddim_recconstruct_method import *
 from core.ddim_memory_method import *
+from core.ddim_mtmemory_method import *
 from tqdm import tqdm
 import torch
 import os
@@ -23,10 +24,12 @@ class Runner():
             self.method = DDIMInvNmap_Memory(args, cls_path)
         elif args.method_name == "ddiminvunified_memory":
             self.method = DDIMInvUnified_Memory(args, cls_path)
-        elif args.method_name == "ddiminvunified_multimemory":
-            self.method = DDIMInvUnified_MultiMemory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
+        elif args.method_name == "ddiminvrgb_mtmemory":
+            self.method = DDIMInvRGB_MTMemory(args, cls_path)
+        elif args.method_name == "controlnet_ddiminv_mtmemory":
+            self.method = ControlNet_DDIMInv_MTMemory(args, cls_path)
         elif args.method_name == "controlnet_rec":
             self.method = ControlNet_Rec(args, cls_path)
         elif args.method_name == "ddim_rec":
@@ -44,7 +47,7 @@ class Runner():
         dataloader = test_lightings_loader(self.args, self.cls, "memory")
         with torch.no_grad():
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
-                # if i == 5:
+                # if i == 10:
                 #     break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
@@ -63,9 +66,10 @@ class Runner():
         
     def evaluate(self):
         dataloader = test_lightings_loader(self.args, self.cls, "test")
-        for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader, desc="Extracting test features")):
-            text_prompt = f'A photo of a {self.cls}'
-            self.method.predict(i, images, nmap, text_prompt, gt, label)
+        with torch.no_grad():
+            for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader, desc="Extracting test features")):
+                text_prompt = f'A photo of a {self.cls}'
+                self.method.predict(i, images, nmap, text_prompt, gt, label)
 
         if self.args.viz:
             self.method.visualizae_heatmap()

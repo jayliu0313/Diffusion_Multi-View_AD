@@ -23,19 +23,18 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="controlnet_ddiminv_memory", help="controlnet_rec, ddim_rec, nullinv_rec, ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvunified_memory, ddiminvunified_multimemory, controlnet_ddiminv_memory")
+parser.add_argument('--method_name', default="ddiminvrgb_mtmemory", help=" \
+Reconstruction Base: controlnet_rec, ddim_rec, nullinv_rec, \
+DDIM Base: ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvunified_memory, controlnet_ddiminv_memory\
+Multi Time DDIM Base: ddiminvrgb_mtmemory, controlnet_ddiminv_mtmemory")
+
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
 parser.add_argument('--dist_function', type=str, default='l2_dist', help='l2_dist, cosine')
 
 #### Load Checkpoint ####
 parser.add_argument("--load_vae_ckpt", default="")
-# "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/train_VAE_stable-diffusion-v1-4_woDecomp_allcls/vae_best_ckpt.pth"
-# "/mnt/home_6T/public/jayliu0313/check_point/rgb_ckpt/vae_stable-diffusion-v1-4_woDecomp/vae_decomp_best_ckpt.pth"
-
 parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth")
-# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_NullText_FeatureLossAllLayer_AllCls/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth"
-# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_allcls/best_unet.pth"
 
 parser.add_argument('--load_controlnet_ckpt', type=str, default="checkpoints/controlnet_model/NmapControlnet_RgbUnet_ClsTxt_allcls/controlnet_best_ckpt.pth")
 # "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/RgbNmap_UnetFLoss_AllClass_AllLayer_clsPrompt/controlnet_best.pth"
@@ -44,16 +43,9 @@ parser.add_argument('--load_controlnet_ckpt', type=str, default="checkpoints/con
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
 
-parser.add_argument("--noise_intensity", type=int, default=81) 
-parser.add_argument("--memory_T", type=int, default=21)  # T
-parser.add_argument("--memory_t", type=int, default=21)  # t
-parser.add_argument("--test_T", type=int, default=21)    # T
-parser.add_argument("--test_t", type=int, default=21)    # t
+parser.add_argument("--noise_intensity", type=int, default=81)
+parser.add_argument("--multi_timesteps", type=int, default=[21, 81, 121])
 parser.add_argument("--step_size", type=int, default=20)
-
-# DDIM Inv Setup
-parser.add_argument("--opt_max_steps", type=int, default=1000)
-parser.add_argument("--guidance_scale", type=float, default=7.5)
 
 # Controlnet Model Setup
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
@@ -63,10 +55,7 @@ args = parser.parse_args()
 if DEBUG == True:
     FILE_NAME = "Testing"
 else:
-    # FILE_NAME = "ddiminv_unet_4thlayers_noise1_textpromptnormal"
-    # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_loop{args.num_opt_steps}_gdscale{args.guidance_scale}_clsprompt"
-    # FILE_NAME = f"_{args.method_name}_noise{args.noise_intensity}_step{args.step_size}_memory{args.memory_intensity}_FeatureLoss_clstxt_method1"
-    FILE_NAME = f"_{args.method_name}_memoryT{args.memory_T}_memoryt{args.memory_t}_testT{args.test_T}_testt{args.test_t}_MULADD_WOAlign_ALLCLS"
+    FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_ALLCLS_MAXLAST"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
