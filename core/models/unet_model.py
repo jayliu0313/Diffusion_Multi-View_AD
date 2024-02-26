@@ -283,5 +283,6 @@ def build_unet(args):
     unet = MyUNet2DConditionModel.from_pretrained(
         args.diffusion_id,
         subfolder="unet",
-        revision=args.revision)
+        revision=args.revision
+    )
     return unet

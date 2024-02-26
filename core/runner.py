@@ -1,4 +1,4 @@
-from core.data import test_lightings_loader
+from core.data import test_lightings_loader, mvtec3D_test_loader
 from core.ddim_recconstruct_method import *
 from core.ddim_memory_method import *
 from tqdm import tqdm
@@ -35,14 +35,20 @@ class Runner():
             return TypeError
         
         self.cls = cls
+        # print(cls)
         self.log_file = open(osp.join(cls_path, "class_score.txt"), "a", 1)
         self.method_name = args.method_name
-    
+        if args.dataset_type == "eyecandies":
+            self.memory_loader = test_lightings_loader(args, cls, "memory")
+            self.test_loader = test_lightings_loader(args, cls, "test")
+        elif args.dataset_type == "mvtec3d":
+            self.memory_loader = mvtec3D_test_loader(args, cls, "memory")
+            self.test_loader = mvtec3D_test_loader(args, cls, "test")
+            
     def fit(self):
-        dataloader = test_lightings_loader(self.args, self.cls, "memory")
         with torch.no_grad():
-            for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
-                if i == 3:
+            for i, (lightings, nmap, text_prompt) in enumerate(tqdm(self.memory_loader, desc=f'Extracting train features for class {self.cls}')):
+                if i == 2:
                     break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
@@ -60,9 +66,11 @@ class Runner():
             self.method.cal_alignment()
         
     def evaluate(self):
-        dataloader = test_lightings_loader(self.args, self.cls, "test")
+        
         with torch.no_grad():
-            for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(dataloader, desc="Extracting test features")):
+            for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(self.test_loader, desc="Extracting test features")):
+                if i == 26:
+                    break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.predict(i, images, nmap, text_prompt, gt, label)
 

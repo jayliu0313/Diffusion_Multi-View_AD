@@ -16,24 +16,27 @@ class Memory_Method(DDIM_Method):
         self.f_coreset = 1
         self.coreset_eps = 0.9
         self.n_reweight = 3
-        self.target_timestep = args.noise_intensity
-        self.mul_timesteps = args.multi_timesteps
+        self.target_timestep = max(args.noise_intensity)
+        # print(self.target_timestep)
+        self.mul_timesteps = args.noise_intensity
         self.dist_fun = args.dist_function
         self.patch_lib = []
         self.nmap_patch_lib = []
           
     def compute_s_s_map(self, patch, patch_lib, feature_map_dims, p=2):
         # torch.cuda.empty_cache()
-        target_patch_lib = patch_lib[-1]
-        target_patch = patch[-1]
-        if self.dist_fun == 'l2_dist':
-            dist = torch.cdist(target_patch.to(self.device), target_patch_lib.to(self.device), p=p)
-        elif self.dist_fun == 'cosine':
-            dist = 1.0 - nxn_cos_sim(target_patch, target_patch_lib)
-        smap, min_idx = torch.min(dist, dim=1)
+        smap_list = []
+        for i in range(len(self.patch_lib)):
+            target_patch_lib = patch_lib[i].to(self.device)
+            target_patch = patch[i].to(self.device)
+            if self.dist_fun == 'l2_dist':
+                dist = torch.cdist(target_patch, target_patch_lib, p=p)
+            elif self.dist_fun == 'cosine':
+                dist = 1.0 - nxn_cos_sim(target_patch, target_patch_lib)
+            smap, _ = torch.min(dist, dim=1)
+            smap_list.append(smap.to('cpu'))
+        mul_smap = torch.stack(smap_list)
         if len(patch_lib) > 1:
-            mem_patches = patch_lib[:, min_idx, :]
-            mul_smap = self.pdist(patch.to(self.device), mem_patches.to(self.device))
             smap, _ = torch.min(mul_smap, dim=0)
         s_star = torch.max(smap)
         smap = smap.view(1, 1, *feature_map_dims)
@@ -108,7 +111,7 @@ class Memory_Method(DDIM_Method):
         latent_list = []
         t_list = []
         for t in reversed(self.timesteps_list):
-            noise_pred = self.unet(latents, t, text_emb)['sample']
+            noise_pred = self.unet(latents.to(self.device), t, text_emb)['sample']
             latents = self.next_step(noise_pred, t, latents)
             if t in self.mul_timesteps:
                 latent_list.append(latents.to('cpu'))
@@ -190,24 +193,24 @@ class DDIMInvRGB_Memory(Memory_Method):
 
     def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
         lightings = lightings.to(self.device)
-        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        #lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
         latents = self.image2latents(lightings)
         bsz = latents.shape[0]
         text_emb = self.get_text_embedding(text_prompt, bsz)
         
-        unet_f = self.get_unet_f(latents, text_emb)
+        unet_f = self.get_unet_f(latents, text_emb, islighting=False)
         self.patch_lib.append(unet_f.cpu())
     
     def predict(self, i, lightings, nmap, text_prompt, gt, label):
         lightings = lightings.to(self.device)
-        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        #lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
         
         latents = self.image2latents(lightings)
-        text_emb = self.get_text_embedding(text_prompt, 6)
-        unet_f = self.get_unet_f(latents, text_emb)
+        text_emb = self.get_text_embedding(text_prompt, 1)
+        unet_f = self.get_unet_f(latents, text_emb, islighting=False)
         
         s, smap = self.compute_s_s_map(unet_f, self.patch_lib, latents.shape[-2:])
-        img = lightings[5, :, :, :]
+        img = lightings[0]
         self.image_labels.append(label.numpy())
         self.image_preds.append(s.numpy())
         self.image_list.append(t2np(img))
@@ -313,8 +316,8 @@ class DDIMInvUnified_Memory(Memory_Method):
         nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs, islighting=False)
         nmap_s, nmap_smap = self.compute_s_s_map(nmap_unet_f, self.nmap_patch_lib, nmap_latents.shape[-2:])
 
-        pixel_map = (rgb_smap * self.weight + self.bias) + nmap_smap
-        s = (rgb_s * self.weight + self.bias) + nmap_s
+        pixel_map = (rgb_smap * self.weight + self.bias) * nmap_smap
+        s = (rgb_s * self.weight + self.bias) * nmap_s
         
         ### Record Score ###
         img = lightings[5, :, :, :]
@@ -344,7 +347,8 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
 
         self.weight = 1
         self.bias = 0
-        
+    
+    @torch.no_grad()    
     def controlnet(self, noisy_latents, condition_map, timestep, text_emb):
         down_block_res_samples, mid_block_res_sample = self.controllora(
             noisy_latents, timestep,
@@ -367,7 +371,7 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
         latent_list = []
         t_list = []
         for t in reversed(self.timesteps_list):
-            noise_pred = self.controlnet(latents, condition_map, t, text_emb)['sample']
+            noise_pred = self.controlnet(latents.to(self.device), condition_map, t, text_emb)['sample']
             latents = self.next_step(noise_pred, t, latents)
             if t in self.mul_timesteps:
                 latent_list.append(latents.to('cpu'))

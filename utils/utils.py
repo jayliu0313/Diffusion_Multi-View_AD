@@ -23,7 +23,7 @@ def log_args(args):
     
     log_file.write(f'Noise Intensity: {args.noise_intensity} \n')
     log_file.write(f'Step Size {args.step_size} \n')
-    log_file.write(f'Multi Timesteps: {args.multi_timesteps} \n')
+    # log_file.write(f'Multi Timesteps: {args.multi_timesteps} \n')
 
 def set_seeds(seed: int = 0) -> None:
     np.random.seed(seed)

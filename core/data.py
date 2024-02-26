@@ -28,21 +28,6 @@ def eyecandies_classes():
         'PeppermintCandy',   
     ]
 
-def mvtec3d_classes():
-    return [
-        "bagel",
-        "cable_gland",
-        "carrot",
-        "cookie",
-        "dowel",
-        "foam",
-        "peach",
-        "potato",
-        "rope",
-        "tire",
-    ]
-
-
 class BaseDataset(Dataset):
 
     def __init__(self, split, class_name, img_size, dataset_path='datasets/eyecandies'):
@@ -432,14 +417,32 @@ def val_nmap_loader(args):
 ######################################################
 #                     MVTEC 3D-AD                    #
 ######################################################
+def mvtec3d_classes():
+    return [
+        "bagel",
+        "cable_gland",
+        "carrot",
+        "cookie",
+        "dowel",
+        "foam",
+        "peach",
+        "potato",
+        "rope",
+        "tire",
+    ]
 class MVTec3DTrain(Dataset):
-    def __init__(self, img_size, dataset_path, cls=None, split='train'):
+    def __init__(self, img_size, dataset_path, class_name=None, split='train'):
         self.img_size = img_size
         self.img_path = dataset_path
         self.split = split
-        self.cls = cls
+        self.class_name = class_name
+        # print(cls)
         self.rgb_transform = transforms.Compose(
-        [transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
+        [
+        # transforms.RandomHorizontalFlip(p=0.5),
+        # transforms.RandomVerticalFlip(p=0.5),
+        # transforms.RandomRotation(degrees=(-15, 15)),
+        transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
         transforms.ToTensor(),
         ])
         self.cls_list = []
@@ -451,11 +454,11 @@ class MVTec3DTrain(Dataset):
 
         rgb_paths = []
         tiff_paths = []
-
-        if self.cls == None:
+        # print(self.cls)
+        if self.class_name == None:
             cls_list = mvtec3d_classes()
         else:
-            cls_list = [self.cls]
+            cls_list = [self.class_name]
         
         for cls in cls_list:
             rgb_path = glob.glob(os.path.join(self.img_path, cls, self.split, 'good', 'rgb') + "/*.png")
@@ -480,16 +483,17 @@ class MVTec3DTrain(Dataset):
         rgb_path = img_path[0]
         tiff_path = img_path[1]
         text_prompt = "A photo of a " + cls
+        # text_prompt = ""
         #load image data
         img = Image.open(rgb_path).convert('RGB')
         img = self.rgb_transform(img)
         return img, torch.zeros_like(img), text_prompt
 
 class MVTec3DTest(Dataset):
-    def __init__(self, img_size, dataset_path, cls):
+    def __init__(self, img_size, dataset_path, class_name):
         self.img_size = img_size
-        self.cls = cls
-        self.img_path = os.path.join(dataset_path, self.cls, 'test')
+        self.class_name = class_name
+        self.img_path = os.path.join(dataset_path, self.class_name, 'test')
         self.rgb_transform = transforms.Compose(
         [transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
         transforms.ToTensor()])
@@ -537,7 +541,7 @@ class MVTec3DTest(Dataset):
         img_path, gt, label = self.img_paths[idx], self.gt_paths[idx], self.labels[idx]
         rgb_path = img_path[0]
         tiff_path = img_path[1]
-        text_prompt = f"A photo of a {self.cls}"
+        text_prompt = f"A photo of a {self.class_name}"
         #load image data
         img_original = Image.open(rgb_path).convert('RGB')
         img = self.rgb_transform(img_original)
@@ -560,12 +564,12 @@ def mvtec3D_val_loader(args):
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=True, pin_memory=True)
     return data_loader
 
-def mvtec3D_test_loader(args, cls, split):
+def mvtec3D_test_loader(args, class_name, split):
     if split == "memory":
-        dataset = MVTec3DTrain(args.image_size, args.data_path, cls=cls, split='train')
-        data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=False,pin_memory=True)
+        dataset = MVTec3DTrain(img_size=args.image_size, dataset_path=args.data_path, class_name=class_name, split='train')
+        data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
     elif split == "test":
-        dataset = MVTec3DTest(args.image_size, args.data_path, cls=cls)
+        dataset = MVTec3DTest(args.image_size, args.data_path, class_name=class_name)
         data_loader = DataLoader(dataset=dataset, batch_size=1, num_workers=args.workers, shuffle=False, drop_last=False,pin_memory=True)
     return data_loader
 
@@ -701,11 +705,11 @@ def mvtec_val_loader(args):
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=True, pin_memory=True)
     return data_loader
 
-def mvtec_test_loader(args, cls, split):
+def mvtec_test_loader(args, class_name, split):
     if split == "memory":
-        dataset = MVTecDataset(source=args.data_path, classname=cls, imagesize=args.image_size, split='train')
+        dataset = MVTecDataset(source=args.data_path, classname=class_name, imagesize=args.image_size, split='train')
         data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
     elif split == "test":
-        dataset = MVTecDataset(source=args.data_path, classname=cls, imagesize=args.image_size, split='test')
+        dataset = MVTecDataset(source=args.data_path, classname=class_name, imagesize=args.image_size, split='test')
         data_loader = DataLoader(dataset=dataset, batch_size=1, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
     return data_loader

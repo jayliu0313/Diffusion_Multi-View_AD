@@ -13,8 +13,9 @@ DEBUG = False
 
 # Dataset and environment setup
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
+# /mnt/home_6T/public/jayliu0313/datasets/Eyecandies/
 parser.add_argument('--output_dir', default="./output")
-parser.add_argument('--dataset_type', default="eyecandies")
+parser.add_argument('--dataset_type', default="eyecandies", help="eyecandies, mvtec3d")
 parser.add_argument('--batch_size', default=4, type=int)
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument("--workers", default=4)
@@ -25,7 +26,8 @@ parser.add_argument('--seed', type=int, default=7)
 # Method choose
 parser.add_argument('--method_name', default="ddiminvunified_memory", help=" \
 Reconstruction Base: controlnet_rec, ddim_rec, nullinv_rec, \
-DDIM Base: ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvunified_memory, controlnet_ddiminv_memory\
+DDIM Base: ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, \
+ddiminvunified_memory, controlnet_ddiminv_memory\
 ")
 
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
@@ -33,8 +35,9 @@ parser.add_argument('--dist_function', type=str, default='l2_dist', help='l2_dis
 
 #### Load Checkpoint ####
 parser.add_argument("--load_vae_ckpt", default="")
-parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth")
+parser.add_argument("--load_unet_ckpt", default="/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_allcls/best_unet.pth")
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth"
+# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_allcls/best_unet.pth"
 
 parser.add_argument('--load_controlnet_ckpt', type=str, default="checkpoints/controlnet_model/NmapControlnet_RgbUnet_ClsTxt_allcls/controlnet_best_ckpt.pth")
 # "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/RgbNmap_UnetFLoss_AllClass_AllLayer_clsPrompt/controlnet_best.pth"
@@ -43,44 +46,42 @@ parser.add_argument('--load_controlnet_ckpt', type=str, default="checkpoints/con
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
 
-parser.add_argument("--noise_intensity", type=int, default=81)
-parser.add_argument("--multi_timesteps", type=int, default=[21,81])
+# parser.add_argument("--noise_intensity", type=int, default=81)
+parser.add_argument("--noise_intensity", type=int, nargs='+', default=[61, 81])
 parser.add_argument("--step_size", type=int, default=20)
 
 # Controlnet Model Setup
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
 parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
 
-args = parser.parse_args()
-if DEBUG == True:
-    FILE_NAME = "Testing"
-else:
-    FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_ALLCLS_MinLAST_MULADD"
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-args.output_dir = os.path.join(args.output_dir, time) + FILE_NAME
-if not os.path.exists(args.output_dir):
-    os.makedirs(args.output_dir)
-    
-
-def run_eyecandies(args):
+def run(args):
     if args.dataset_type=='eyecandies':
         classes = [
         'CandyCane',
-        'ChocolateCookie',
-        'ChocolatePraline',
-        'Confetto',
-        'GummyBear',
-        'HazelnutTruffle',
-        'LicoriceSandwich',
-        'Lollipop',
-        'Marshmallow',
-        'PeppermintCandy'
+        # 'ChocolateCookie',
+        # 'ChocolatePraline',
+        # 'Confetto',
+        # 'GummyBear',
+        # 'HazelnutTruffle',
+        # 'LicoriceSandwich',
+        # 'Lollipop',
+        # 'Marshmallow',
+        # 'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
-        classes = []
-
+        classes = [
+        "bagel",
+        # "cable_gland",
+        # "carrot",
+        # "cookie",
+        # "dowel",
+        # "foam",
+        # "peach",
+        # "potato",
+        # "rope",
+        # "tire",
+        ]
+        args.data_path = "/mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/"
     result_file = open(osp.join(args.output_dir, "results.txt"), "a", 1)   
     MODALITY_NAMES = ['RGB', 'Nmap', 'RGB+Nmap']
     image_rocaucs_df = pd.DataFrame(MODALITY_NAMES, columns=['Method'])
@@ -122,6 +123,22 @@ def run_eyecandies(args):
     result_file.write(f'AU PRO Results \n\n{au_pros_df.to_markdown(index=False)} \n\n')
     result_file.close()
 
-log_args(args)
-print("current device", device)
-run_eyecandies(args)
+if __name__ == "__main__":
+    test_t = [[61, 81], [81, 101], [61, 81, 101], [41, 81]]
+    for i in test_t:
+        args = parser.parse_args()
+        args.noise_intensity = i
+        if DEBUG == True:
+            FILE_NAME = "Testing"
+        else:
+            FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_ALLCLS_EachFindMin_MULMUL"
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        args.output_dir = os.path.join(args.output_dir, args.dataset_type, time) + FILE_NAME
+        if not os.path.exists(args.output_dir):
+            os.makedirs(args.output_dir)
+            
+        log_args(args)
+        print("current device", device)
+        run(args)
