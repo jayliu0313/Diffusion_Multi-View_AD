@@ -19,8 +19,15 @@ def orgpc_to_unorgpc(organized_pc):
     organized_pc_np = organized_pc.squeeze().permute(1, 2, 0).numpy()
     unorganized_pc = organized_pc_to_unorganized_pc(organized_pc=organized_pc_np)
     nonzero_indices = np.nonzero(np.all(unorganized_pc != 0, axis=1))[0]
+    
     pc_no_zeros = unorganized_pc[nonzero_indices, :]
     return pc_no_zeros, nonzero_indices
+
+def get_zero_indices(organized_pc):
+    organized_pc_np = organized_pc.squeeze().permute(1, 2, 0).numpy()
+    unorganized_pc = organized_pc_to_unorganized_pc(organized_pc=organized_pc_np)
+    zero_indices = np.nonzero(np.all(unorganized_pc == 0, axis=1))[0]
+    return zero_indices
 
 def resize_organized_pc(organized_pc, target_height=224, target_width=224, tensor_out=True):
     torch_organized_pc = torch.tensor(organized_pc).permute(2, 0, 1).unsqueeze(dim=0).contiguous()

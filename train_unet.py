@@ -5,7 +5,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
-from core.data import train_lightings_loader, val_lightings_loader, mvtec3D_train_loader, mvtec3D_val_loader
+from core.data import train_lightings_loader, val_lightings_loader, mvtec3D_train_loader, mvtec3D_val_loader, mvtec_train_loader, mvtec_val_loader
+import matplotlib.pyplot as plt
 
 import torch.nn.functional as F
 from transformers import CLIPTextModel, AutoTokenizer
@@ -19,20 +20,20 @@ matplotlib.use('Agg')
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
-parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/", type=str)
+parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_2D/", type=str)
 # /mnt/home_6T/public/jayliu0313/datasets/Eyecandies/
 # /mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/
-
-parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTec3DAD_UnetV2-1")
+# /mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_2D/
+parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTec2D_UnetV1-5_woAug")
 parser.add_argument('--load_vae_ckpt', default=None)
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument('--batch_size', default=6, type=int)
-parser.add_argument('--train_type', default="mvtect3d", help="eyecandies_rgb, eyecandies_nmap, mvtect3d")
+parser.add_argument('--train_type', default="mvtec2d", help="eyecandies_rgb, eyecandies_nmap, mvtec3d, mvtec2d")
 
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
-parser.add_argument("--diffusion_id", type=str, default="stabilityai/stable-diffusion-2-1")
-parser.add_argument("--revision", type=str, default="")
+parser.add_argument("--diffusion_id", type=str, default="runwayml/stable-diffusion-v1-5")
+parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
 # ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c
 # Training Setup
 parser.add_argument("--learning_rate", default=5e-6)
@@ -80,9 +81,12 @@ class TrainUnet():
         if "eyecandies" in args.train_type:
             self.train_dataloader = train_lightings_loader(args)
             self.val_dataloader = val_lightings_loader(args)
-        elif args.train_type == "mvtect3d":
+        elif args.train_type == "mvtec3d":
             self.train_dataloader = mvtec3D_train_loader(args)
             self.val_dataloader = mvtec3D_val_loader(args)
+        elif args.train_type == "mvtec2d":
+            self.train_dataloader = mvtec_train_loader(args)
+            self.val_dataloader = mvtec_val_loader(args)
 
         # Create Model
         self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")
@@ -92,15 +96,15 @@ class TrainUnet():
         self.vae = AutoencoderKL.from_pretrained(
             args.diffusion_id,
             subfolder="vae",
-            # revision=args.revision,
+            #revision=args.revision,
         ).to(self.device)
 
 
         self.unet = MyUNet2DConditionModel.from_pretrained(
                 args.diffusion_id,
                 subfolder="unet",
-                # revision=args.revision
-                )
+                #revision=args.revision
+        )
 
         self.vae.requires_grad_(False)
         self.unet.requires_grad_(True)
@@ -241,11 +245,17 @@ class TrainUnet():
             epoch_loss = 0.0
             i = 0
             for images, nmaps, text_prompt in tqdm(self.train_dataloader, desc="Training"):
-                # i+=1
+                i+=1
                 # if i == 5:
                 #     break
                 # print(text_prompt)
+            # 將tensor的數據轉換為NumPy數組
 
+                numpy_array = images[0].permute(1, 2, 0).numpy()
+
+                # 顯示數據
+                # plt.imsave("visualize_output/test" + str(i) + ".png", numpy_array)
+                
                 if self.type == "eyecandies_rgb":
                     inputs = images.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
                     text_embeddings = self.get_text_embedding(text_prompt, 6)
@@ -318,7 +328,7 @@ class TrainUnet():
             # save model
             if epoch % self.save_epoch == 0:
                 export_loss(args.ckpt_path + '/loss.png', loss_list)
-                _ = self.log_validation() # Evaluate
+                # _ = self.log_validation() # Evaluate
                 if val_loss < val_best_loss:
                     val_best_loss = val_loss
                     model_path = args.ckpt_path + f'/best_unet.pth'

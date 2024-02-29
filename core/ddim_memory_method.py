@@ -22,23 +22,39 @@ class Memory_Method(DDIM_Method):
         self.dist_fun = args.dist_function
         self.patch_lib = []
         self.nmap_patch_lib = []
-          
+        self.reweight = args.reweight
+        self.feature_layers = args.feature_layers
+        
     def compute_s_s_map(self, patch, patch_lib, feature_map_dims, p=2):
         # torch.cuda.empty_cache()
-        smap_list = []
-        for i in range(len(self.patch_lib)):
-            target_patch_lib = patch_lib[i].to(self.device)
-            target_patch = patch[i].to(self.device)
-            if self.dist_fun == 'l2_dist':
-                dist = torch.cdist(target_patch, target_patch_lib, p=p)
-            elif self.dist_fun == 'cosine':
-                dist = 1.0 - nxn_cos_sim(target_patch, target_patch_lib)
-            smap, _ = torch.min(dist, dim=1)
-            smap_list.append(smap.to('cpu'))
-        mul_smap = torch.stack(smap_list)
+        # smap_list = []
+        # for i in range(len(patch_lib)):
+        #     target_patch_lib = patch_lib[i].to(self.device)
+        #     target_patch = patch[i].to(self.device)
+        #     dist = torch.cdist(target_patch, target_patch_lib, p=p)
+        #     smap, min_idx = torch.min(dist, dim=1)
+        #     smap_list.append(smap.to('cpu'))
+        # mul_smap = torch.stack(smap_list)
+        target_patch_lib = patch_lib[0].to(self.device)
+        target_patch = patch[0].to(self.device)
+        dist = torch.cdist(target_patch, target_patch_lib, p=p)
+        smap, min_idx = torch.min(dist, dim=1)
+        min_idx = min_idx.to('cpu')
         if len(patch_lib) > 1:
+            mul_smap = self.pdist(patch.to(self.device), patch_lib[:, min_idx, :].to(self.device))
             smap, _ = torch.min(mul_smap, dim=0)
         s_star = torch.max(smap)
+        if self.reweight:
+            s_idx = torch.argmax(smap)
+            m_test = target_patch[s_idx].unsqueeze(0)  # anomalous patch
+            m_star = target_patch_lib[min_idx[s_idx]].unsqueeze(0)  # closest neighbour
+            w_dist = torch.cdist(m_star, target_patch_lib)  # find knn to m_star pt.1
+            _, nn_idx = torch.topk(w_dist, k=self.n_reweight, largest=False)  # pt.2
+
+            m_star_knn = torch.linalg.norm(m_test - target_patch_lib[nn_idx[0, 1:]], dim=1)
+            D = torch.sqrt(torch.tensor(target_patch.shape[1]))
+            w = 1 - (torch.exp(s_star / D) / (torch.sum(torch.exp(m_star_knn / D)) + 1e-5))
+            s_star = w * s_star
         smap = smap.view(1, 1, *feature_map_dims)
         smap = torch.nn.functional.interpolate(smap, size=(self.image_size, self.image_size), mode='bilinear')
         smap = self.blur(smap.to('cpu'))
@@ -117,13 +133,22 @@ class Memory_Method(DDIM_Method):
                 latent_list.append(latents.to('cpu'))
                 t_list.append(t)
         return latent_list, t_list
-
+    
+    @torch.no_grad()
+    def get_feature_layers(self, model, latent, t, text_emb):
+        pred_f = model(latent.to(self.device), t, text_emb)['up_ft']
+        features_list = []
+        for layer in self.feature_layers:
+            features_list.append(pred_f[layer].to('cpu'))
+        features = torch.cat(features_list, dim=1)
+        return features
+        
     @torch.no_grad() 
-    def get_unet_f(self, latents, text_emb, layer=3, islighting=True):
+    def get_unet_f(self, latents, text_emb, islighting=True):
         latent_list, t_list = self.ddim_loop(latents, text_emb)
         unetf_list = []
         for i, t in enumerate(t_list):
-            unet_f = self.unet(latent_list[i].to(self.device), t, text_emb)['up_ft'][layer]
+            unet_f = self.get_feature_layers(self.unet, latent_list[i], t, text_emb)
             B, C, H, W = unet_f.shape
             if islighting:
                 unet_f = torch.mean(unet_f.view(-1, 6, C, H, W), dim=1)
@@ -332,6 +357,99 @@ class DDIMInvUnified_Memory(Memory_Method):
         self.rgb_pixel_preds.append(t2np(rgb_smap))
         self.nmap_pixel_preds.append(t2np(nmap_smap))
 
+class DDIMInvUnified_TimeFusion_Memory(Memory_Method):
+    def __init__(self, args, cls_path):
+        super().__init__(args, cls_path)
+        self.weight = 1
+        self.bias = 0
+    
+    def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
+        text_emb = self.get_text_embedding(text_prompt, 1)
+        
+        # rgb
+        lightings = lightings.to(self.device)
+        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        rgb_latents = self.image2latents(lightings)
+        bsz = rgb_latents.shape[0]
+        rgb_text_embs = text_emb.repeat(bsz, 1, 1)
+        rgb_unet_f = self.get_unet_f(rgb_latents, rgb_text_embs, islighting=True)
+        rgb_unet_f = torch.mean(rgb_unet_f, dim=0)
+        self.patch_lib.append(rgb_unet_f.unsqueeze(0).cpu())
+        
+        # normal  map
+        nmap = nmap.to(self.device)
+        nmap_latents = self.image2latents(nmap)
+        bsz = nmap_latents.shape[0]
+        nmap_text_embs = text_emb.repeat(bsz, 1, 1)
+        nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs, islighting=False)
+        nmap_unet_f = torch.mean(nmap_unet_f, dim=0)
+        self.nmap_patch_lib.append(nmap_unet_f.unsqueeze(0).cpu())
+
+    def predict_align_data(self, lightings, nmap, text_prompt):
+        text_emb = self.get_text_embedding(text_prompt, 1)
+        # rgb
+        lightings = lightings.to(self.device)
+        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        rgb_latents = self.image2latents(lightings)
+        bsz = rgb_latents.shape[0]
+        rgb_text_embs = text_emb.repeat(bsz, 1, 1)
+        rgb_unet_f = self.get_unet_f(rgb_latents, rgb_text_embs)
+        
+        rgb_s, rgb_smap = self.compute_align_map(rgb_unet_f, self.patch_lib, rgb_latents.shape[-2:])
+        
+        # nromal map
+        nmap = nmap.to(self.device)
+        nmap_latents = self.image2latents(nmap)
+        bsz = nmap_latents.shape[0]
+        nmap_text_embs = text_emb.repeat(bsz, 1, 1)
+        nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs)
+        nmap_s, nmap_smap = self.compute_align_map(nmap_unet_f, self.nmap_patch_lib, nmap_latents.shape[-2:])
+
+        # image_level
+        self.nmap_image_preds.append(nmap_s.numpy())
+        self.rgb_image_preds.append(rgb_s.numpy())
+        # pixel_level
+        self.rgb_pixel_preds.extend(rgb_smap.flatten().numpy())
+        self.nmap_pixel_preds.extend(nmap_smap.flatten().numpy())
+
+    @ torch.no_grad()
+    def predict(self, i, lightings, nmap, text_prompt, gt, label):
+        text_emb = self.get_text_embedding(text_prompt, 1)
+        # rgb
+        lightings = lightings.to(self.device)
+        lightings = lightings.reshape(-1, 3, self.image_size, self.image_size)
+        rgb_latents = self.image2latents(lightings)
+        bsz = rgb_latents.shape[0]
+        rgb_text_embs = text_emb.repeat(bsz, 1, 1)
+        rgb_unet_f = self.get_unet_f(rgb_latents, rgb_text_embs, islighting=True)
+        rgb_unet_f = torch.mean(rgb_unet_f, dim=0)
+        rgb_s, rgb_smap = self.compute_s_s_map(rgb_unet_f.unsqueeze(0), self.patch_lib, rgb_latents.shape[-2:])
+        
+        # normal map
+        nmap = nmap.to(self.device)
+        nmap_latents = self.image2latents(nmap)
+        bsz = nmap_latents.shape[0]
+        nmap_text_embs = text_emb.repeat(bsz, 1, 1)
+        nmap_unet_f = self.get_unet_f(nmap_latents, nmap_text_embs, islighting=False)
+        nmap_unet_f = torch.mean(nmap_unet_f, dim=0)
+        nmap_s, nmap_smap = self.compute_s_s_map(nmap_unet_f.unsqueeze(0), self.nmap_patch_lib, nmap_latents.shape[-2:])
+
+        pixel_map = (rgb_smap * self.weight + self.bias) * nmap_smap
+        s = (rgb_s * self.weight + self.bias) * nmap_s
+        
+        ### Record Score ###
+        img = lightings[5, :, :, :]
+        self.image_list.append(t2np(img))
+        self.image_labels.append(label.numpy())
+        self.image_preds.append(s.numpy())
+        self.rgb_image_preds.append(rgb_s.numpy())
+        self.nmap_image_preds.append(nmap_s.numpy())
+        
+        self.pixel_labels.append(t2np(gt))
+        self.pixel_preds.append(t2np(pixel_map))
+        self.rgb_pixel_preds.append(t2np(rgb_smap))
+        self.nmap_pixel_preds.append(t2np(nmap_smap))
+
 class ControlNet_DDIMInv_Memory(Memory_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
@@ -379,11 +497,11 @@ class ControlNet_DDIMInv_Memory(Memory_Method):
         return latent_list, t_list
     
     @torch.no_grad() 
-    def get_controlnet_f(self, latents, condition_map, text_emb, layer=3, islighting=True):
+    def get_controlnet_f(self, latents, condition_map, text_emb, islighting=True):
         noisy_latents, t_list  = self.controlnet_ddim_loop(latents, condition_map, text_emb)
         control_fs = []
         for i, t in enumerate(t_list):
-            contol_f = self.controlnet(noisy_latents[i].to(self.device), condition_map, t, text_emb)['up_ft'][layer]
+            contol_f = self.controlnet(noisy_latents[i].to(self.device), condition_map, t, text_emb)['up_ft'][self.feature_layers[:]]
             B, C, H, W = contol_f.shape
             if islighting:
                 contol_f = torch.mean(contol_f.view(-1, 6, C, H, W), dim=1)

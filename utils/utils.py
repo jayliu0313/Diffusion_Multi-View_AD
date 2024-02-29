@@ -10,6 +10,7 @@ def log_args(args):
 
     log_file = open(os.path.join(args.output_dir, "log.txt"), "a", 1)
     log_file.write(f'Method Name: {args.method_name} \n')
+    log_file.write(f'Reweight: {args.reweight} \n')
     log_file.write(f'Score Type: {args.score_type} \n')
     log_file.write(f'Seed: {args.seed} \n\n')
 

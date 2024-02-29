@@ -1,4 +1,4 @@
-from core.data import test_lightings_loader, mvtec3D_test_loader
+from core.data import test_lightings_loader, mvtec3D_test_loader, mvtec_test_loader
 from core.ddim_recconstruct_method import *
 from core.ddim_memory_method import *
 from tqdm import tqdm
@@ -23,6 +23,8 @@ class Runner():
             self.method = DDIMInvNmap_Memory(args, cls_path)
         elif args.method_name == "ddiminvunified_memory":
             self.method = DDIMInvUnified_Memory(args, cls_path)
+        elif args.method_name == "ddiminvunified_timefusion_memory":
+            self.method = DDIMInvUnified_TimeFusion_Memory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
         elif args.method_name == "controlnet_rec":
@@ -44,12 +46,15 @@ class Runner():
         elif args.dataset_type == "mvtec3d":
             self.memory_loader = mvtec3D_test_loader(args, cls, "memory")
             self.test_loader = mvtec3D_test_loader(args, cls, "test")
+        elif args.dataset_type == "mvtec2d":
+            self.memory_loader = mvtec_test_loader(args, cls, "memory")
+            self.test_loader = mvtec_test_loader(args, cls, "test")    
             
     def fit(self):
         with torch.no_grad():
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(self.memory_loader, desc=f'Extracting train features for class {self.cls}')):
-                if i == 2:
-                    break
+                # if i == 2:
+                #     break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
             self.method.run_coreset()
@@ -59,8 +64,8 @@ class Runner():
         with torch.no_grad():
             print(f'Computing weight and bias for alignment')
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
-                if i == 25:
-                    break
+                # if i == 25:
+                #     break
                 text_prompt = f'A photo of a {self.cls}'  
                 self.method.predict_align_data(lightings, nmap, text_prompt)
             self.method.cal_alignment()
@@ -69,8 +74,8 @@ class Runner():
         
         with torch.no_grad():
             for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(self.test_loader, desc="Extracting test features")):
-                if i == 26:
-                    break
+                # if i == 26:
+                #     break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.predict(i, images, nmap, text_prompt, gt, label)
 

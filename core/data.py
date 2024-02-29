@@ -437,14 +437,20 @@ class MVTec3DTrain(Dataset):
         self.split = split
         self.class_name = class_name
         # print(cls)
-        self.rgb_transform = transforms.Compose(
-        [
-        # transforms.RandomHorizontalFlip(p=0.5),
-        # transforms.RandomVerticalFlip(p=0.5),
-        # transforms.RandomRotation(degrees=(-15, 15)),
-        transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.ToTensor(),
-        ])
+        if split == "train":
+            self.rgb_transform = transforms.Compose(
+            [
+                # transforms.RandomHorizontalFlip(p=0.5),
+                # transforms.RandomRotation(degrees=(0, 180)),
+                transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.ToTensor(),
+            ])
+        else:
+            self.rgb_transform = transforms.Compose(
+            [
+                transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.ToTensor(),
+            ])
         self.cls_list = []
         self.img_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
@@ -485,8 +491,18 @@ class MVTec3DTrain(Dataset):
         text_prompt = "A photo of a " + cls
         # text_prompt = ""
         #load image data
+        # organized_pc = read_tiff_organized_pc(tiff_path)
+        # resized_org_pc = resize_organized_pc(organized_pc, self.img_size, self.img_size)
+        # zero_indices = get_zero_indices(resized_org_pc)
+        
         img = Image.open(rgb_path).convert('RGB')
         img = self.rgb_transform(img)
+
+        # img = img.permute(1, 2, 0)
+        # H, W, C = img.shape
+        # img = img.reshape(H * W, C)
+        # img[zero_indices, :] = torch.tensor([0, 1.0, 0]).repeat(zero_indices.shape[0], 1)
+        # img = img.reshape(H, W, C).permute(2, 0, 1)
         return img, torch.zeros_like(img), text_prompt
 
 class MVTec3DTest(Dataset):
@@ -608,12 +624,15 @@ class MVTecDataset(Dataset):
         self.split = split
         self.is_val = is_val
         self.classnames_to_use = [classname] if classname is not None else MVTEC_AD_CLASSNAMES
-        self.train_val_split = 0.8
+        self.train_val_split = 1.0
 
         self.imgpaths_per_class, self.data_to_iterate = self.get_image_data()
-
+           
         self.rgb_transform = transforms.Compose(
-        [transforms.Resize((imagesize, imagesize), interpolation=transforms.InterpolationMode.BICUBIC),
+        [
+        # transforms.RandomHorizontalFlip(p=0.5),
+        # transforms.RandomRotation(degrees=(0, 180)),
+        transforms.Resize((imagesize, imagesize), interpolation=transforms.InterpolationMode.BICUBIC),
         transforms.ToTensor()])
         self.gt_transform = transforms.Compose( 
         [transforms.Resize((imagesize, imagesize), interpolation=transforms.InterpolationMode.NEAREST),

@@ -151,7 +151,7 @@ class DDIM_Method(Base_Method):
         self.vae = AutoencoderKL.from_pretrained(
             args.diffusion_id,
             subfolder="vae",
-            revision=args.revision,
+            # revision=args.revision,
             torch_dtype=torch.float32
         ).to(self.device)
         
