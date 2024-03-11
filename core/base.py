@@ -23,7 +23,7 @@ class Base_Method():
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.initialize_score()
-        
+        self.data_type = args.dataset_type
         self.blur = KNNGaussianBlur()
         self.criteria = torch.nn.MSELoss()    
         
@@ -40,7 +40,6 @@ class Base_Method():
         self.cos = torch.nn.CosineSimilarity()
         self.average = torch.nn.AvgPool2d(3, stride=1)
         self.resize = torch.nn.AdaptiveAvgPool2d((32, 32))
-
         self.image_transform = transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
         if not os.path.exists(self.reconstruct_path):
             os.makedirs(self.reconstruct_path)
@@ -97,12 +96,28 @@ class Base_Method():
     def get_rec_loss(self):
         return self.cls_rec_loss
     
-    def visualizae_heatmap(self):
-        self.pixel_preds = np.stack(self.pixel_preds)
+    def visualizae_heatmap(self, modality_name):
         self.pixel_labels = np.stack(self.pixel_labels)
-        score_map = self.pixel_preds.reshape(-1, self.image_size, self.image_size)
+        cls_path = os.path.join(self.cls_path, modality_name)
+        if modality_name == 'RGB' and self.rgb_pixel_preds:
+            pixel_preds = np.stack(self.rgb_pixel_preds)
+        elif modality_name == 'Nmap' and self.nmap_pixel_preds:
+            pixel_preds = np.stack(self.nmap_pixel_preds)
+        elif modality_name == 'RGB+Nmap' and self.pixel_preds:
+            pixel_preds = np.stack(self.pixel_preds)
+        else:
+            return
+
+        score_map = pixel_preds.reshape(-1, self.image_size, self.image_size)
         gt_mask = np.squeeze(np.array(self.pixel_labels, dtype=np.bool_))
-        visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, self.cls_path)
+        
+        # score_map_z = z_score_normalization(score_map.flatten())
+        # score_map_mn = min_max_normalization(score_map.flatten())
+        # visualize_perpixel_distribute(score_map.flatten(), gt_mask, cls_path, "distribution_wonormalize")
+        # visualize_perpixel_distribute(score_map_z, gt_mask, cls_path, "distribution_of_zscore")
+        # visualize_perpixel_distribute(score_map_mn, gt_mask, cls_path, "distribution_of_minmax")
+        visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, cls_path)
+        
         
     def cal_alignment(self):
         # nmap distribution

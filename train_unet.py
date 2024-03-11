@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
-from core.data import train_lightings_loader, val_lightings_loader, mvtec3D_train_loader, mvtec3D_val_loader, mvtec_train_loader, mvtec_val_loader
+from core.data import train_lightings_loader, val_lightings_loader, mvtec3D_train_loader, mvtec3D_val_loader, mvtec_train_loader, mvtec_test_loader
 import matplotlib.pyplot as plt
 
 import torch.nn.functional as F
@@ -20,20 +20,20 @@ matplotlib.use('Agg')
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
-parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_2D/", type=str)
+parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/", type=str)
 # /mnt/home_6T/public/jayliu0313/datasets/Eyecandies/
 # /mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/
 # /mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_2D/
-parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTec2D_UnetV1-5_woAug")
-parser.add_argument('--load_vae_ckpt', default=None)
+parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTec3DAD_RGBDepth_UnetV1-4_Aug")
+parser.add_argument('--load_unet_ckpt', default="")
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument('--batch_size', default=6, type=int)
-parser.add_argument('--train_type', default="mvtec2d", help="eyecandies_rgb, eyecandies_nmap, mvtec3d, mvtec2d")
-
+parser.add_argument('--train_type', default="mvtec3d", help="eyecandies_rgb, eyecandies_nmap, mvtec3d, mvtec2d")
+parser.add_argument('--is_feature_loss', default=False, type=bool)
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
-parser.add_argument("--diffusion_id", type=str, default="runwayml/stable-diffusion-v1-5")
-parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
+parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4", help="CompVis/stable-diffusion-v1-4, runwayml/stable-diffusion-v1-5")
+parser.add_argument("--revision", type=str, default="")
 # ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c
 # Training Setup
 parser.add_argument("--learning_rate", default=5e-6)
@@ -48,7 +48,7 @@ parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradie
 parser.add_argument('--epoch', default=0, type=int, help="Which epoch to start training at")
 parser.add_argument("--num_train_epochs", type=int, default=1000)
 parser.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler.")
-parser.add_argument("--save_epoch", type=int, default=2)
+parser.add_argument("--save_epoch", type=int, default=1)
 
 
 def export_loss(save_path, loss_list):
@@ -77,6 +77,7 @@ class TrainUnet():
         self.train_log_file = open(osp.join(args.ckpt_path, "training_log.txt"), "a", 1)
         self.val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
         self.type = args.train_type
+        self.is_feature_loss = args.is_feature_loss
         # Load training and validation data
         if "eyecandies" in args.train_type:
             self.train_dataloader = train_lightings_loader(args)
@@ -86,26 +87,29 @@ class TrainUnet():
             self.val_dataloader = mvtec3D_val_loader(args)
         elif args.train_type == "mvtec2d":
             self.train_dataloader = mvtec_train_loader(args)
-            self.val_dataloader = mvtec_val_loader(args)
+            self.val_dataloader = mvtec_train_loader(args)
 
         # Create Model
         self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")
         self.text_encoder = CLIPTextModel.from_pretrained(args.diffusion_id, subfolder="text_encoder")
-        self.noise_scheduler = DDPMScheduler.from_pretrained(args.diffusion_id, subfolder="scheduler")
+        self.noise_scheduler = DDPMScheduler.from_pretrained(args.diffusion_id, subfolder="scheduler", schedule="linear_beta")
 
         self.vae = AutoencoderKL.from_pretrained(
             args.diffusion_id,
             subfolder="vae",
-            #revision=args.revision,
+            # revision=args.revision,
         ).to(self.device)
 
 
         self.unet = MyUNet2DConditionModel.from_pretrained(
                 args.diffusion_id,
                 subfolder="unet",
-                #revision=args.revision
+                # revision=args.revision
         )
-
+        if os.path.isfile(args.load_unet_ckpt):
+            self.unet.load_state_dict(torch.load(args.load_unet_ckpt, map_location=self.device))
+            print("Load Diffusion Model Checkpoint!!")
+            
         self.vae.requires_grad_(False)
         self.unet.requires_grad_(True)
         self.text_encoder.requires_grad_(False)
@@ -195,7 +199,7 @@ class TrainUnet():
                     encoder_hidden_states=text_embeddings,
                 )
                 pred_noise = model_output['sample']
-                if self.type == "eyecandies_rgb":
+                if self.type == "eyecandies_rgb" and self.is_feature_loss:
                     unet_f_layer0 = model_output['up_ft'][0]
                     _, C, H, W = unet_f_layer0.shape
                     mean_unet_f_layer0 = torch.mean(unet_f_layer0.view(-1, 6, C, H, W), dim=1)
@@ -245,12 +249,10 @@ class TrainUnet():
             epoch_loss = 0.0
             i = 0
             for images, nmaps, text_prompt in tqdm(self.train_dataloader, desc="Training"):
-                i+=1
+                # i+=1
                 # if i == 5:
                 #     break
                 # print(text_prompt)
-            # 將tensor的數據轉換為NumPy數組
-
                 numpy_array = images[0].permute(1, 2, 0).numpy()
 
                 # 顯示數據
@@ -277,7 +279,7 @@ class TrainUnet():
                 )
 
                 pred_noise = model_output['sample']
-                if self.type == "eyecandies_rgb":
+                if self.type == "eyecandies_rgb" and self.is_feature_loss:
                     unet_f_layer0 = model_output['up_ft'][0]
                     _, C, H, W = unet_f_layer0.shape
                     mean_unet_f_layer0 = torch.mean(unet_f_layer0.view(-1, 6, C, H, W), dim=1)
@@ -328,7 +330,7 @@ class TrainUnet():
             # save model
             if epoch % self.save_epoch == 0:
                 export_loss(args.ckpt_path + '/loss.png', loss_list)
-                # _ = self.log_validation() # Evaluate
+                # val_loss = self.log_validation() # Evaluate
                 if val_loss < val_best_loss:
                     val_best_loss = val_loss
                     model_path = args.ckpt_path + f'/best_unet.pth'

@@ -9,6 +9,7 @@ from utils.utils import t2np
 
 import matplotlib.pyplot as plt
 import matplotlib
+from matplotlib.lines import Line2D
 matplotlib.use('Agg')
 OUT_DIR = 'HeatMap'
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -18,6 +19,18 @@ MODEL = 'PointNet'
 norm = matplotlib.colors.Normalize(vmin=0.0, vmax=255.0)
 cm = 4/2.54 # New
 dpi = 300   # New
+
+def min_max_normalization(data, min_val=0, max_val=1):
+    min_data = np.min(data)
+    max_data = np.max(data)
+    normalized_data = min_val + (max_val - min_val) * (data - min_data) / (max_data - min_data)
+    return normalized_data
+
+def z_score_normalization(data):
+    mean = np.mean(data)
+    std = np.std(data)
+    normalized_data = (data - mean) / std
+    return normalized_data
 
 def denormalization(x):
     x = (x.transpose(1, 2, 0) * 255.).astype(np.uint8)
@@ -65,7 +78,7 @@ def export_test_images(test_img, gts, scores, threshold, output_dir):
             ax_img[0].imshow(gt_img)
             ax_img[1].imshow(img, cmap='gray', interpolation='none')
             ax_img[1].imshow(score_map, cmap='jet', norm=norm, alpha=0.5, interpolation='none')
-            ax_img[2].imshow(score_img)
+            ax_img[2].imshow(img)
             image_file = os.path.join(image_dirs, '{:08d}'.format(i) + '.png')
             fig_img.savefig(image_file, dpi=dpi, format='png', bbox_inches = 'tight', pad_inches = 0.0)
             plt.close()
@@ -120,13 +133,12 @@ def visualize_image_s_distribute(rgb_s, image_gt):
     plt.savefig(image_file)
     plt.close()
 
-def visualize_smap_distribute(score_map, gt_map, image_size=224):
-    path_dirs = "./output_dir/" + OUT_DIR
+def visualize_perpixel_distribute(score_map, gt_map, output_dir, name):
+    path_dirs = output_dir
     os.makedirs(path_dirs, exist_ok=True)
-    image_file = os.path.join(path_dirs, 'category_all_ditribution.png')
+    
+    image_file = os.path.join(path_dirs, name)
     gt_map = np.array(gt_map)
-
-    score_map = score_map.flatten()
     gt_map = gt_map.flatten()
     
     anomalous_label = np.where(gt_map == 1)[0]
@@ -134,29 +146,86 @@ def visualize_smap_distribute(score_map, gt_map, image_size=224):
 
     anomalous_distribution = score_map[anomalous_label]
     normal_distribution = score_map[normal_label]
+    # normal_distribution = normal_distribution[normal_distribution != 1]
+    normal_mean = np.mean(normal_distribution)
+    anomalous_mean = np.mean(anomalous_distribution)
+    distance = np.abs(anomalous_mean - normal_mean)
+    print(output_dir)
+    print(f"Method {name} Distance:{distance}")
+    print("------------------------------------------------------------------------------------------")
+    fig, ax1 = plt.subplots(figsize=(16, 8))
+    fig.subplots_adjust(top=0.9)
+    fig.text(0.5, 0.02, s='Per-Pixel Feature Distance', ha='center', fontsize=35)
 
-    normal_distribution = normal_distribution[normal_distribution != 1]
-    # print(score_non_zero_indices.shape)
-    # print(score_non_zero_indices)
-    # print(score_map)
-   
-    fig = plt.figure(figsize=(14, 16))
-    fig.text(0.5, 0.04, s = 'pixel-level score', ha='center', fontsize=25)
-    fig.text(0.04, 0.45, s = 'number of pixel', ha='center', rotation='vertical', fontsize=25)
+    ax1.tick_params(axis='x', labelsize=25)
+    ax1.tick_params(axis='y', labelsize=20)
+    # if name == "distribution_wonormalize":
+    #     ax1.set_xlim(0, 75)
+    # Plot normal distribution on the left axis (ax1)
+    ax1.hist(normal_distribution, bins=100, color='g', alpha=0.7)
+    ax1.set_ylabel('Number of Pixels (Normal)', fontsize=35)
+    # ax1.set_title("Distribution", fontsize=35)
+    
+    # Create a twin axis sharing the xaxis with ax1
+    ax2 = ax1.twinx()
+    ax2.tick_params(axis='y', labelsize=20)
+
+    # Plot anomalous distribution on the right axis (ax2)
+    ax2.hist(anomalous_distribution, bins=100, color='r', alpha=0.7)
+    ax2.set_ylabel('Number of Pixels (Anomalous)', fontsize=35)
+    
+    # 在圖上顯示三條直線，表示平均值
+    ax1.axvline(normal_mean, color='darkgreen', linestyle='dashed', linewidth=4, label='Normal Mean')
+    ax1.axvline(anomalous_mean, color='darkred', linestyle='dashed', linewidth=4, label='Anomaly Mean')
+    # ax1.axvline(overall_mean, linestyle='dashed', linewidth=6, label='Overall Mean')
     
 
-    ax = fig.add_subplot(211)
-    ax.tick_params(axis='x', labelsize=15)
-    ax.tick_params(axis='y', labelsize=15)
-    ax.hist(anomalous_distribution, bins=100, color='r')
-    ax.set_title("anomalous Distribution", fontsize=20)
+    legend_elements_mean = [
+        Line2D([0], [0], color='darkgreen', lw=5, linestyle='dashed', label='Normal Mean'),
+        Line2D([0], [0], color='darkred', lw=5, linestyle='dashed', label='Anomaly Mean'),
+    ]
+    # Add legend in the top right corner
+    ax1.legend(handles=legend_elements_mean, loc='upper right', fontsize=23, framealpha=0.3)
+    ax2.legend(handles=legend_elements_mean, loc='upper right', fontsize=23, framealpha=0.3)
+    plt.savefig(image_file)
+    plt.close()
 
-    ax = fig.add_subplot(212)
-    ax.tick_params(axis='x', labelsize=15)
-    ax.tick_params(axis='y', labelsize=15)
-    ax.hist(normal_distribution, bins=100, color='g')
-    ax.set_title("normal Distribution", fontsize=20)
+# def visualize_perpixel_distribute(score_map, gt_map):
+#     path_dirs = "./output_dir/" + OUT_DIR
+#     os.makedirs(path_dirs, exist_ok=True)
+#     image_file = os.path.join(path_dirs, 'category_all_ditribution.png')
+#     gt_map = np.array(gt_map)
 
+#     score_map = score_map.flatten()
+#     gt_map = gt_map.flatten()
+    
+#     anomalous_label = np.where(gt_map == 1)[0]
+#     normal_label = np.where(gt_map == 0)[0]
+
+#     anomalous_distribution = score_map[anomalous_label]
+#     normal_distribution = score_map[normal_label]
+
+#     normal_distribution = normal_distribution[normal_distribution != 1]
+#     # print(score_non_zero_indices.shape)
+#     # print(score_non_zero_indices)
+#     # print(score_map)
+   
+#     fig, ax = plt.subplots(figsize=(14, 16))
+#     fig.text(0.5, 0.04, s = 'pixel-level score', ha='center', fontsize=25)
+#     fig.text(0.04, 0.45, s = 'number of pixel', ha='center', rotation='vertical', fontsize=25)
+    
+#     ax.tick_params(axis='x', labelsize=15)
+#     ax.tick_params(axis='y', labelsize=15)
+#     ax.hist(anomalous_distribution, bins=100, alpha=0.5, color='r', label='Anomalous Distribution')
+#     # ax.set_title("anomalous Distribution", fontsize=20)
+
+#     # ax.tick_params(axis='x', labelsize=15)
+#     # ax.tick_params(axis='y', labelsize=15)
+#     ax.hist(normal_distribution, bins=100, alpha=0.5, color='g', label='Normal Distribution')
+#     # ax.set_title("normal Distribution", fontsize=20)
+#     plt.savefig(image_file)
+#     plt.close()
+######################################
     # ax = fig.add_subplot(413)
     # ax.hist(non_min_rgb_map, bins=100, color='b')
     # ax.title.set_text("RGB Distribution")
@@ -165,8 +234,7 @@ def visualize_smap_distribute(score_map, gt_map, image_size=224):
     # ax.hist(non_min_new_rgb, bins=100, color='c')
     # ax.title.set_text("New RGB Distribution")
 
-    plt.savefig(image_file)
-    plt.close()
+
 
     # total_map = total_map.reshape(-1, image_size * image_size)
     # sdf_map = sdf_map.reshape(-1, image_size * image_size)

@@ -6,8 +6,10 @@ from einops import repeat, rearrange
 import glob
 from torch.utils.data import Dataset
 from utils.mvtec3d_util import *
+from utils.pair_augment import *
 from utils.utils import CutPaste
 from torch.utils.data import DataLoader
+
 import numpy as np
 import random
 
@@ -431,25 +433,34 @@ def mvtec3d_classes():
         "tire",
     ]
 class MVTec3DTrain(Dataset):
-    def __init__(self, img_size, dataset_path, class_name=None, split='train'):
+    def __init__(self, img_size, dataset_path, class_name=None, split='train', is_memory=True):
         self.img_size = img_size
         self.img_path = dataset_path
         self.split = split
         self.class_name = class_name
         # print(cls)
+        
         if split == "train":
-            self.rgb_transform = transforms.Compose(
-            [
-                # transforms.RandomHorizontalFlip(p=0.5),
-                # transforms.RandomRotation(degrees=(0, 180)),
-                transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
-                transforms.ToTensor(),
-            ])
+            if is_memory == True:
+                self.paired_transform = Compose(
+                [
+                    Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
+                    ToTensor(),
+                ])
+            else:
+                self.paired_transform = Compose(
+                [
+                    RandomVerticalFlip(p=0.5),
+                    RandomHorizontalFlip(p=0.5),
+                    RandomRotation(degrees=(-180, 180)),
+                    Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
+                    ToTensor(),
+                ])
         else:
-            self.rgb_transform = transforms.Compose(
+            self.paired_transform = Compose(
             [
-                transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
-                transforms.ToTensor(),
+                Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
+                ToTensor(),
             ])
         self.cls_list = []
         self.img_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
@@ -494,16 +505,21 @@ class MVTec3DTrain(Dataset):
         # organized_pc = read_tiff_organized_pc(tiff_path)
         # resized_org_pc = resize_organized_pc(organized_pc, self.img_size, self.img_size)
         # zero_indices = get_zero_indices(resized_org_pc)
-        
+        organized_pc = read_tiff_organized_pc(tiff_path)
+        depth_map_3channel = np.repeat(organized_pc_to_depth_map(organized_pc)[:, :, np.newaxis], 3, axis=2)
+        resized_depth_map_3channel = resize_organized_pc(depth_map_3channel)
+        to_pil_image = transforms.ToPILImage()
         img = Image.open(rgb_path).convert('RGB')
-        img = self.rgb_transform(img)
-
+        # print(img.shape)
+        img, resized_depth_map_3channel = self.paired_transform(img, to_pil_image(resized_depth_map_3channel))
+        
+        
         # img = img.permute(1, 2, 0)
         # H, W, C = img.shape
         # img = img.reshape(H * W, C)
         # img[zero_indices, :] = torch.tensor([0, 1.0, 0]).repeat(zero_indices.shape[0], 1)
         # img = img.reshape(H, W, C).permute(2, 0, 1)
-        return img, torch.zeros_like(img), text_prompt
+        return img, resized_depth_map_3channel, text_prompt
 
 class MVTec3DTest(Dataset):
     def __init__(self, img_size, dataset_path, class_name):
@@ -561,28 +577,33 @@ class MVTec3DTest(Dataset):
         #load image data
         img_original = Image.open(rgb_path).convert('RGB')
         img = self.rgb_transform(img_original)
-
+        
+        organized_pc = read_tiff_organized_pc(tiff_path)
+        depth_map_3channel = np.repeat(organized_pc_to_depth_map(organized_pc)[:, :, np.newaxis], 3, axis=2)
+        resized_depth_map_3channel = resize_organized_pc(depth_map_3channel)
+        to_pil_image = transforms.ToPILImage()
+        resized_depth_map_3channel = self.rgb_transform(to_pil_image(resized_depth_map_3channel))
         if gt == 0:
             gt = torch.zeros([1, self.img_size, self.img_size])
         else:
             gt = Image.open(gt).convert('L')
             gt = self.gt_transform(gt)
             gt = torch.where(gt > 0.5, 1., .0)
-        return (img, torch.zeros_like(img), text_prompt), gt[:1], label
+        return (img, resized_depth_map_3channel, text_prompt), gt[:1], label
 
 def mvtec3D_train_loader(args):
-    dataset = MVTec3DTrain(args.image_size, args.data_path, split='train')
+    dataset = MVTec3DTrain(args.image_size, args.data_path, split='train', is_memory=False)
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=True, drop_last=True, pin_memory=True)
     return data_loader
 
 def mvtec3D_val_loader(args):
-    dataset = MVTec3DTrain(args.image_size, args.data_path, split='validation')
+    dataset = MVTec3DTrain(args.image_size, args.data_path, split='validation', is_memory=False)
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=True, pin_memory=True)
     return data_loader
 
 def mvtec3D_test_loader(args, class_name, split):
     if split == "memory":
-        dataset = MVTec3DTrain(img_size=args.image_size, dataset_path=args.data_path, class_name=class_name, split='train')
+        dataset = MVTec3DTrain(img_size=args.image_size, dataset_path=args.data_path, class_name=class_name, split='train', is_memory=True)
         data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
     elif split == "test":
         dataset = MVTec3DTest(args.image_size, args.data_path, class_name=class_name)
@@ -627,13 +648,17 @@ class MVTecDataset(Dataset):
         self.train_val_split = 1.0
 
         self.imgpaths_per_class, self.data_to_iterate = self.get_image_data()
-           
-        self.rgb_transform = transforms.Compose(
-        [
-        # transforms.RandomHorizontalFlip(p=0.5),
-        # transforms.RandomRotation(degrees=(0, 180)),
-        transforms.Resize((imagesize, imagesize), interpolation=transforms.InterpolationMode.BICUBIC),
-        transforms.ToTensor()])
+        if split == "train":
+            self.rgb_transform = transforms.Compose([
+            # transforms.RandomHorizontalFlip(p=0.5),
+            # transforms.RandomRotation(degrees=(0, 180)),
+            transforms.Resize((imagesize, imagesize), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor()])
+        else:
+            self.rgb_transform = transforms.Compose([
+                transforms.Resize((imagesize, imagesize), interpolation=transforms.InterpolationMode.BICUBIC),
+                transforms.ToTensor()
+            ])
         self.gt_transform = transforms.Compose( 
         [transforms.Resize((imagesize, imagesize), interpolation=transforms.InterpolationMode.NEAREST),
         transforms.ToTensor()])

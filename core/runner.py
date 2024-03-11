@@ -80,7 +80,8 @@ class Runner():
                 self.method.predict(i, images, nmap, text_prompt, gt, label)
 
         if self.args.viz:
-            self.method.visualizae_heatmap()
+            for modality_name in self.modality_names:
+                self.method.visualizae_heatmap(modality_name)
         
         image_rocaucs = dict()
         pixel_rocaucs = dict()

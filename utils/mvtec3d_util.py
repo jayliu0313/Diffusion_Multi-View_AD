@@ -29,7 +29,7 @@ def get_zero_indices(organized_pc):
     zero_indices = np.nonzero(np.all(unorganized_pc == 0, axis=1))[0]
     return zero_indices
 
-def resize_organized_pc(organized_pc, target_height=224, target_width=224, tensor_out=True):
+def resize_organized_pc(organized_pc, target_height=256, target_width=256, tensor_out=True):
     torch_organized_pc = torch.tensor(organized_pc).permute(2, 0, 1).unsqueeze(dim=0).contiguous()
     torch_resized_organized_pc = torch.nn.functional.interpolate(torch_organized_pc, size=(target_height, target_width),
                                                                  mode='bicubic')

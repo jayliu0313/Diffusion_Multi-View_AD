@@ -20,8 +20,8 @@ def log_args(args):
     log_file.write(f'Diffusion ID: {args.diffusion_id} \n')
     log_file.write(f'Revision: {args.revision} \n\n')
 
-    log_file.write(f'Distance Function: {args.dist_function} \n\n')
-    
+    log_file.write(f'Feature Layer: {args.feature_layers} \n')
+    log_file.write(f'Top K: {args.topk} \n')
     log_file.write(f'Noise Intensity: {args.noise_intensity} \n')
     log_file.write(f'Step Size {args.step_size} \n')
     # log_file.write(f'Multi Timesteps: {args.multi_timesteps} \n')

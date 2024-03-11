@@ -15,7 +15,7 @@ DEBUG = False
 parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
 # /mnt/home_6T/public/jayliu0313/datasets/Eyecandies/
 parser.add_argument('--output_dir', default="./output")
-parser.add_argument('--dataset_type', default="mvtec2d", help="eyecandies, mvtec3d, mvtec2d")
+parser.add_argument('--dataset_type', default="mvtec3d", help="eyecandies, mvtec3d, mvtec2d")
 parser.add_argument('--batch_size', default=4, type=int)
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument("--workers", default=4)
@@ -31,19 +31,21 @@ ddiminvunified_memory, ddiminvunified_timefusion_memory, controlnet_ddiminv_memo
 ")
 parser.add_argument('--reweight', default=False, type=bool)
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
-parser.add_argument('--dist_function', type=str, default='l2_dist', help='l2_dist, cosine')
-parser.add_argument('--feature_layers', default=[2, 3], type=int)
+parser.add_argument('--feature_layers', default=[3], type=int)
+parser.add_argument('--topk', default=1, type=int)
+
 #### Load Checkpoint ####
 parser.add_argument("--load_vae_ckpt", default="")
-parser.add_argument("--load_unet_ckpt", default="checkpoints/diffusion_checkpoints/TrainMVTec2D_UnetV1-5_woAug/best_unet.pth")
+parser.add_argument("--load_unet_ckpt", default="checkpoints/diffusion_checkpoints/TrainMVTec3DAD_UnetV1-5_Aug_RandomApply/best_unet.pth")
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_allcls/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_ckpt6_allcls/best_unet.pth"
 # "checkpoints/diffusion_checkpoints/TrainMVTec2D_UnetV1-5_woAug/best_unet.pth"
+#  "/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec/epoch_unet.pth"
 
-parser.add_argument('--load_controlnet_ckpt', type=str, default="checkpoints/controlnet_model/NmapControlnet_RgbUnet_ClsTxt_allcls/controlnet_best_ckpt.pth")
-# "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/RgbNmap_UnetFLoss_AllClass_AllLayer_clsPrompt/controlnet_best.pth"
-
+parser.add_argument('--load_controlnet_ckpt', type=str, default="/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/with_woFlossUnet/epoch51c_ontrolnet.pth")
+# "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/with_woFlossUnet/epoch51_controlnet.pth"
+# "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/with_woFLossUnet_woFLoss/epoch36_controlnet.pth"
 # Unet Model (Diffusion Model)
 parser.add_argument("--diffusion_id", type=str, default="runwayml/stable-diffusion-v1-5", help="CompVis/stable-diffusion-v1-4, runwayml/stable-diffusion-v1-5")
 
@@ -57,20 +59,22 @@ parser.add_argument("--step_size", type=int, default=20)
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
 parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
 
-test_t = [[1], [21], [41], [61], [81], [1, 21]]
+# test_t = [[1], [21], [41], [61], [1, 21]]
+# test_t = [[81, 101, 121], [81, 101]]
+test_t = [[21], [41], [81]]
 def run(args):
     if args.dataset_type=='eyecandies':
         classes = [
-        'CandyCane',
-        'ChocolateCookie',
+        # 'CandyCane',
+        # 'ChocolateCookie',
         'ChocolatePraline',
-        'Confetto',
-        'GummyBear',
-        'HazelnutTruffle',
-        'LicoriceSandwich',
-        'Lollipop',
-        'Marshmallow',
-        'PeppermintCandy'
+        # 'Confetto',
+        # 'GummyBear',
+        # 'HazelnutTruffle',
+        # 'LicoriceSandwich',
+        # 'Lollipop',
+        # 'Marshmallow',
+        # 'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = [
@@ -153,14 +157,13 @@ if __name__ == "__main__":
         if DEBUG == True:
             FILE_NAME = "Testing"
         else:
-            FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_Layers{args.feature_layers}_V1-5Aug"
+            FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_Step{args.step_size}_Layers{args.feature_layers}_Topk{args.topk}_V1-5AugApply"
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         args.output_dir = os.path.join(args.output_dir, args.dataset_type, time) + FILE_NAME
         if not os.path.exists(args.output_dir):
             os.makedirs(args.output_dir)
-            
         log_args(args)
         print("current device", device)
         run(args)
