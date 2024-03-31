@@ -19,7 +19,6 @@ MODEL = 'PointNet'
 norm = matplotlib.colors.Normalize(vmin=0.0, vmax=255.0)
 cm = 4/2.54 # New
 dpi = 300   # New
-
 def min_max_normalization(data, min_val=0, max_val=1):
     min_data = np.min(data)
     max_data = np.max(data)

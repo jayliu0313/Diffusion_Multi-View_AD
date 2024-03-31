@@ -90,12 +90,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--dataset_path', default='/mnt/home_6T/public/jayliu0313/datasets/Eyecandies', type=str, help="Original Eyecandies dataset path.")
-    parser.add_argument('--target_dir', default='/mnt/home_6T/public/jayliu0313/datasets/eyecandies_preprocessed', type=str, help="Processed Eyecandies dataset path")
+    parser.add_argument('--target_dir', default='/mnt/home_6T/public/jayliu0313/datasets/eyecandies_image5_preprocess', type=str, help="Processed Eyecandies dataset path")
     args = parser.parse_args()
     
-    # os.mkdir(args.target_dir)
+    os.mkdir(args.target_dir)
     categories_list = [
-        #'CandyCane',
+        'CandyCane',
         'ChocolateCookie',
         'ChocolatePraline',
         'Confetto',
@@ -142,9 +142,6 @@ if __name__ == '__main__':
         os.mkdir(category_target_test_bad_xyz_path)
         os.mkdir(category_target_test_bad_gt_path)
 
-        category_train_files = os.listdir(category_train_path)
-        num_train_files = len(category_train_files)//17
-
         for i in range(0, 1000):
             pc = depth_to_pointcloud(
                     os.path.join(category_train_path,str(i).zfill(3)+'_depth.png'),
@@ -157,9 +154,6 @@ if __name__ == '__main__':
             tifffile.imwrite(os.path.join(category_target_train_good_xyz_path, str(i).zfill(3)+'.tiff'), pc)
             copyfile(os.path.join(category_train_path,str(i).zfill(3)+'_image_4.png'),os.path.join(category_target_train_good_rgb_path, str(i).zfill(3)+'.png'))
             
-        
-        category_test_files = os.listdir(category_test_path)
-        num_test_files = len(category_test_files)//17
         for i in range(0, 50):
             mask = cv2.imread(os.path.join(category_test_path,str(i).zfill(2)+'_mask.png'))
             if np.any(mask):

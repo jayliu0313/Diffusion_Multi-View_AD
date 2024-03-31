@@ -432,94 +432,87 @@ def mvtec3d_classes():
         "rope",
         "tire",
     ]
-class MVTec3DTrain(Dataset):
-    def __init__(self, img_size, dataset_path, class_name=None, split='train', is_memory=True):
-        self.img_size = img_size
-        self.img_path = dataset_path
-        self.split = split
-        self.class_name = class_name
-        # print(cls)
+# class MVTec3DTrain(Dataset):
+#     def __init__(self, img_size, dataset_path, class_name=None, split='train', is_memory=True):
+#         self.img_size = img_size
+#         self.img_path = dataset_path
+#         self.split = split
+#         self.class_name = class_name
+#         # print(cls)
         
-        if split == "train":
-            if is_memory == True:
-                self.paired_transform = Compose(
-                [
-                    Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
-                    ToTensor(),
-                ])
-            else:
-                self.paired_transform = Compose(
-                [
-                    RandomVerticalFlip(p=0.5),
-                    RandomHorizontalFlip(p=0.5),
-                    RandomRotation(degrees=(-180, 180)),
-                    Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
-                    ToTensor(),
-                ])
-        else:
-            self.paired_transform = Compose(
-            [
-                Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
-                ToTensor(),
-            ])
-        self.cls_list = []
-        self.img_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
+#         if split == "train" and not is_memory:
+#             self.paired_transform = Compose(
+#             [
+#                 RandomVerticalFlip(p=0.5),
+#                 RandomHorizontalFlip(p=0.5),
+#                 RandomRotation(degrees=(-180, 180)),
+#                 Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
+#                 ToTensor(),
+#             ])
+#         else:
+#             self.paired_transform = Compose(
+#             [
+#                 Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
+#                 ToTensor(),
+#             ])
+#         self.cls_list = []
+#         self.img_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
 
-    def load_dataset(self):
-        img_tot_paths = []
-        tot_labels = []
+#     def load_dataset(self):
+#         img_tot_paths = []
+#         tot_labels = []
 
-        rgb_paths = []
-        tiff_paths = []
-        # print(self.cls)
-        if self.class_name == None:
-            cls_list = mvtec3d_classes()
-        else:
-            cls_list = [self.class_name]
+#         rgb_paths = []
+#         tiff_paths = []
+#         # print(self.cls)
+#         if self.class_name == None:
+#             cls_list = mvtec3d_classes()
+#         else:
+#             cls_list = [self.class_name]
         
-        for cls in cls_list:
-            rgb_path = glob.glob(os.path.join(self.img_path, cls, self.split, 'good', 'rgb') + "/*.png")
-            tiff_path = glob.glob(os.path.join(self.img_path, cls, self.split, 'good', 'xyz') + "/*.tiff")
-            self.cls_list.extend([cls] * len(rgb_path))
-            rgb_paths.extend(rgb_path)
-            tiff_paths.extend(tiff_path)
+#         for cls in cls_list:
+#             rgb_path = glob.glob(os.path.join(self.img_path, cls, self.split, 'good', 'rgb') + "/*.png")
+#             tiff_path = glob.glob(os.path.join(self.img_path, cls, self.split, 'good', 'xyz') + "/*.tiff")
+#             self.cls_list.extend([cls] * len(rgb_path))
+#             rgb_paths.extend(rgb_path)
+#             tiff_paths.extend(tiff_path)
             
-        rgb_paths.sort()
-        tiff_paths.sort()
+#         rgb_paths.sort()
+#         tiff_paths.sort()
         
-        sample_paths = list(zip(rgb_paths, tiff_paths))
-        img_tot_paths.extend(sample_paths)
-        tot_labels.extend([0] * len(sample_paths))
-        return img_tot_paths, tot_labels
+#         sample_paths = list(zip(rgb_paths, tiff_paths))
+#         img_tot_paths.extend(sample_paths)
+#         tot_labels.extend([0] * len(sample_paths))
+#         return img_tot_paths, tot_labels
 
-    def __len__(self):
-        return len(self.img_paths)
+#     def __len__(self):
+#         return len(self.img_paths)
 
-    def __getitem__(self, idx):
-        img_path, label, cls = self.img_paths[idx], self.labels[idx], self.cls_list[idx]
-        rgb_path = img_path[0]
-        tiff_path = img_path[1]
-        text_prompt = "A photo of a " + cls
-        # text_prompt = ""
-        #load image data
-        # organized_pc = read_tiff_organized_pc(tiff_path)
-        # resized_org_pc = resize_organized_pc(organized_pc, self.img_size, self.img_size)
-        # zero_indices = get_zero_indices(resized_org_pc)
-        organized_pc = read_tiff_organized_pc(tiff_path)
-        depth_map_3channel = np.repeat(organized_pc_to_depth_map(organized_pc)[:, :, np.newaxis], 3, axis=2)
-        resized_depth_map_3channel = resize_organized_pc(depth_map_3channel)
-        to_pil_image = transforms.ToPILImage()
-        img = Image.open(rgb_path).convert('RGB')
-        # print(img.shape)
-        img, resized_depth_map_3channel = self.paired_transform(img, to_pil_image(resized_depth_map_3channel))
+#     def __getitem__(self, idx):
+#         img_path, label, cls = self.img_paths[idx], self.labels[idx], self.cls_list[idx]
+#         rgb_path = img_path[0]
+#         tiff_path = img_path[1]
+#         text_prompt = "A photo of a " + cls
+#         # text_prompt = ""
+#         #load image data
+#         # organized_pc = read_tiff_organized_pc(tiff_path)
+#         # resized_org_pc = resize_organized_pc(organized_pc, self.img_size, self.img_size)
+#         # zero_indices = get_zero_indices(resized_org_pc)
+#         organized_pc = read_tiff_organized_pc(tiff_path)
+#         depth_map_3channel = np.repeat(organized_pc_to_depth_map(organized_pc)[:, :, np.newaxis], 3, axis=2)
+#         resized_depth_map_3channel = resize_organized_pc(depth_map_3channel)
+#         to_pil_image = transforms.ToPILImage()
+#         img = Image.open(rgb_path).convert('RGB')
+#         # print(img.shape)
+#         img, resized_depth_map_3channel = self.paired_transform(img, to_pil_image(resized_depth_map_3channel))
         
         
-        # img = img.permute(1, 2, 0)
-        # H, W, C = img.shape
-        # img = img.reshape(H * W, C)
-        # img[zero_indices, :] = torch.tensor([0, 1.0, 0]).repeat(zero_indices.shape[0], 1)
-        # img = img.reshape(H, W, C).permute(2, 0, 1)
-        return img, resized_depth_map_3channel, text_prompt
+#         # img = img.permute(1, 2, 0)
+#         # H, W, C = img.shape
+#         # img = img.reshape(H * W, C)
+#         # img[zero_indices, :] = torch.tensor([0, 1.0, 0]).repeat(zero_indices.shape[0], 1)
+#         # img = img.reshape(H, W, C).permute(2, 0, 1)
+#         return img, resized_depth_map_3channel, text_prompt
 
 class MVTec3DTest(Dataset):
     def __init__(self, img_size, dataset_path, class_name):
@@ -590,6 +583,178 @@ class MVTec3DTest(Dataset):
             gt = self.gt_transform(gt)
             gt = torch.where(gt > 0.5, 1., .0)
         return (img, resized_depth_map_3channel, text_prompt), gt[:1], label
+
+class MVTec3DTrain(Dataset):
+    def __init__(self, img_size, dataset_path, class_name=None, split='train', is_memory=True):
+        self.img_size = img_size
+        self.img_path = dataset_path
+        self.split = split
+        self.class_name = class_name
+        
+        if split == "train":
+            if is_memory == True:
+                self.paired_transform = Compose(
+                [
+                    Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
+                    ToTensor(),
+                ])
+            else:
+                self.paired_transform = Compose(
+                [
+                    RandomVerticalFlip(p=0.5),
+                    RandomHorizontalFlip(p=0.5),
+                    RandomRotation(degrees=(-180, 180)),
+                    Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
+                    ToTensor(),
+                ])
+        else:
+            self.paired_transform = Compose(
+            [
+                Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC, interpolation_tg=transforms.InterpolationMode.BICUBIC),
+                ToTensor(),
+            ])
+        self.cls_list = []
+        self.img_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
+
+    def load_dataset(self):
+        img_tot_paths = []
+        tot_labels = []
+
+        rgb_paths = []
+        tiff_paths = []
+        nmap_paths = []
+
+        if self.class_name == None:
+            cls_list = mvtec3d_classes()
+        else:
+            cls_list = [self.class_name]
+        
+        for cls in cls_list:
+            rgb_path = glob.glob(os.path.join(self.img_path, cls, self.split, 'good', 'rgb') + "/*.png")
+            tiff_path = glob.glob(os.path.join(self.img_path, cls, self.split, 'good', 'xyz') + "/*.tiff")
+            nmap_path = glob.glob(os.path.join(self.img_path, cls, self.split, 'good', 'nmap') + "/*.png")
+            self.cls_list.extend([cls] * len(rgb_path))
+            rgb_paths.extend(rgb_path)
+            tiff_paths.extend(tiff_path)
+            nmap_paths.extend(nmap_path)
+            
+        rgb_paths.sort()
+        tiff_paths.sort()
+        nmap_paths.sort()
+        
+        sample_paths = list(zip(rgb_paths, tiff_paths, nmap_paths))
+        img_tot_paths.extend(sample_paths)
+        tot_labels.extend([0] * len(sample_paths))
+        return img_tot_paths, tot_labels
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+        img_path, label, cls = self.img_paths[idx], self.labels[idx], self.cls_list[idx]
+        rgb_path = img_path[0]
+        tiff_path = img_path[1]
+        nmap_path = img_path[2]
+        text_prompt = "A photo of a " + cls
+        
+        #load image data
+        # organized_pc = read_tiff_organized_pc(tiff_path)
+        # resized_org_pc = resize_organized_pc(organized_pc, self.img_size, self.img_size)
+        # zero_indices = get_zero_indices(resized_org_pc)
+        #depth_map_3channel = np.repeat(organized_pc_to_depth_map(organized_pc)[:, :, np.newaxis], 3, axis=2)
+        #resized_depth_map_3channel = resize_organized_pc(depth_map_3channel)
+        
+        to_pil_image = transforms.ToPILImage()
+        img = Image.open(rgb_path).convert('RGB')
+        nmap = Image.open(nmap_path).convert('RGB')
+        img, nmap = self.paired_transform(img, nmap)
+        
+        # img = img.permute(1, 2, 0)
+        # H, W, C = img.shape
+        # img = img.reshape(H * W, C)
+        # img[zero_indices, :] = torch.tensor([0, 1.0, 0]).repeat(zero_indices.shape[0], 1)
+        # img = img.reshape(H, W, C).permute(2, 0, 1)
+        return img, nmap, text_prompt
+
+class MVTec3DTest(Dataset):
+    def __init__(self, img_size, dataset_path, class_name):
+        self.img_size = img_size
+        self.class_name = class_name
+        self.img_path = os.path.join(dataset_path, self.class_name, 'test')
+        self.rgb_transform = transforms.Compose(
+        [transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
+        transforms.ToTensor()])
+        self.gt_transform = transforms.Compose( 
+        [transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.NEAREST),
+        transforms.ToTensor()])
+        self.img_paths, self.gt_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
+
+    def load_dataset(self):
+        img_tot_paths = []
+        gt_tot_paths = []
+        tot_labels = []
+
+        defect_types = os.listdir(self.img_path)
+
+        for defect_type in defect_types:
+            if defect_type == 'good':
+                rgb_paths = glob.glob(os.path.join(self.img_path, defect_type, 'rgb') + "/*.png")
+                tiff_paths = glob.glob(os.path.join(self.img_path, defect_type, 'xyz') + "/*.tiff")
+                nmap_paths = glob.glob(os.path.join(self.img_path, defect_type, 'nmap') + "/*.png")
+                rgb_paths.sort()
+                tiff_paths.sort()
+                nmap_paths.sort()
+                sample_paths = list(zip(rgb_paths, tiff_paths, nmap_paths))
+                img_tot_paths.extend(sample_paths)
+                gt_tot_paths.extend([0] * len(sample_paths))
+                tot_labels.extend([0] * len(sample_paths))
+            else:
+                rgb_paths = glob.glob(os.path.join(self.img_path, defect_type, 'rgb') + "/*.png")
+                tiff_paths = glob.glob(os.path.join(self.img_path, defect_type, 'xyz') + "/*.tiff")
+                nmap_paths = glob.glob(os.path.join(self.img_path, defect_type, 'nmap') + "/*.png")
+                gt_paths = glob.glob(os.path.join(self.img_path, defect_type, 'gt') + "/*.png")
+                rgb_paths.sort()
+                tiff_paths.sort()
+                nmap_paths.sort()
+                gt_paths.sort()
+                sample_paths = list(zip(rgb_paths, tiff_paths, nmap_paths))
+                img_tot_paths.extend(sample_paths)
+                gt_tot_paths.extend(gt_paths)
+                tot_labels.extend([1] * len(sample_paths))
+                
+        assert len(img_tot_paths) == len(gt_tot_paths), "Something wrong with test and ground truth pair!"
+        return img_tot_paths, gt_tot_paths, tot_labels
+
+    def __len__(self):
+        return len(self.img_paths)
+
+    def __getitem__(self, idx):
+        img_path, gt, label = self.img_paths[idx], self.gt_paths[idx], self.labels[idx]
+        rgb_path = img_path[0]
+        tiff_path = img_path[1]
+        nmap_path = img_path[2]
+        text_prompt = f"A photo of a {self.class_name}"
+        
+        #load image data
+        img_original = Image.open(rgb_path).convert('RGB')
+        nmap_original = Image.open(nmap_path).convert('RGB')
+        img = self.rgb_transform(img_original)
+        nmap = self.rgb_transform(nmap_original)
+        
+        #organized_pc = read_tiff_organized_pc(tiff_path)
+        #resize_org_pc = resize_organized_pc(organized_pc)
+        #depth_map_3channel = np.repeat(organized_pc_to_depth_map(organized_pc)[:, :, np.newaxis], 3, axis=2)
+        #resized_depth_map_3channel = resize_organized_pc(depth_map_3channel)
+        #to_pil_image = transforms.ToPILImage()
+        #resized_depth_map_3channel = self.rgb_transform(to_pil_image(resize_org_pc))
+        
+        if gt == 0:
+            gt = torch.zeros([1, self.img_size, self.img_size])
+        else:
+            gt = Image.open(gt).convert('L')
+            gt = self.gt_transform(gt)
+            gt = torch.where(gt > 0.5, 1., .0)
+        return (img, nmap, text_prompt), gt[:1], label
 
 def mvtec3D_train_loader(args):
     dataset = MVTec3DTrain(args.image_size, args.data_path, split='train', is_memory=False)
@@ -755,5 +920,157 @@ def mvtec_test_loader(args, class_name, split):
         data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
     elif split == "test":
         dataset = MVTecDataset(source=args.data_path, classname=class_name, imagesize=args.image_size, split='test')
+        data_loader = DataLoader(dataset=dataset, batch_size=1, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
+    return data_loader
+
+######################################################
+#                     MVTEC LOCO                     #
+######################################################
+MVTEC_LOCO_CLASS_NAMES = ['breakfast_box', 'juice_bottle', 'pushpins', 'screw_bag', 'splicing_connectors']
+
+class MVTecLoco_TrainDataset(Dataset):
+    def __init__(self, 
+                 dataset_path = "/work/samchu0218/dataset/MVTec_Loco/",
+                 class_name = None,
+                 img_size = 256,
+                 split = "train"):
+        
+        self.dataset_path = dataset_path
+        self.class_name = class_name
+        self.img_size = img_size
+        self.split = split
+
+        self.image_paths, self.labels = self.load_dataset_folder()
+        self.transform_img = transforms.Compose([
+            transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor()])
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        image, label = self.image_paths[idx], self.labels[idx]
+        cls = self.cls_list[idx]
+        text_prompt = "A photo of a " + cls
+
+        image = Image.open(image).convert("RGB")
+        image = self.transform_img(image)
+        return image, torch.zeros_like(image), text_prompt
+
+    def load_dataset_folder(self):
+
+        image_paths, labels, self.cls_list = [], [], []
+        if self.class_name == None:
+            self.class_list = MVTEC_LOCO_CLASS_NAMES
+        else:
+            self.class_list = [self.class_name]
+
+        for cls in self.class_list:
+            img_dir = os.path.join(self.dataset_path, cls, self.split, "good")
+            image_paths.extend(sorted(glob.glob(img_dir + '/*.png')))
+            labels.extend([0] * len(image_paths))
+            self.cls_list.extend([cls] * len(image_paths))
+
+        return image_paths, labels
+    
+class MVTecLoco_TestDataset(Dataset):
+    def __init__(self, 
+                 dataset_path = "/work/samchu0218/dataset/MVTec_Loco/",
+                 class_name = 'breakfast_box',
+                 img_size = 256,
+                 defect_type = 'good'):
+
+        assert class_name in MVTEC_LOCO_CLASS_NAMES, 'class name: {}, should be in {}'.format(class_name, MVTEC_LOCO_CLASS_NAMES)
+        assert defect_type in ['good', 'logical_anomalies', 'structural_anomalies', 'ALL'], 'defect type: {}, should be in {}'.format(defect_type, ['good', 'logical_anomalies', 'structural_anomalies'])
+
+        self.dataset_path = dataset_path
+        self.class_name = class_name
+        self.img_size = img_size
+        self.defect_type = defect_type
+
+        self.image_paths, self.labels, self.mask_paths = self.load_dataset_folder()
+
+        self.transform_img = transforms.Compose([
+            transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.ToTensor()])
+
+        self.transform_mask = transforms.Compose([
+            transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.NEAREST),
+            transforms.ToTensor(),
+        ])
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        image, label, mask_dir = self.image_paths[idx], self.labels[idx], self.mask_paths[idx]
+        cls = self.cls_list[idx]
+        text_prompt = "A photo of a " + cls
+
+        image = Image.open(image).convert("RGB")
+        image = self.transform_img(image)
+        
+        if label == 0:
+            mask = torch.zeros([1, self.img_size, self.img_size])
+        else:
+            mask = torch.zeros([1, self.img_size, self.img_size])
+            for mask_file in mask_dir:
+                tmp_mask = Image.open(mask_file).convert('L')
+                tmp_mask = self.transform_mask(tmp_mask)
+                tmp_mask = torch.where(tmp_mask > 0.5, 1., .0)
+                mask = torch.logical_or(mask, tmp_mask)
+
+        return (image, torch.zeros_like(image), text_prompt), mask[:1], label
+
+    def load_dataset_folder(self):
+
+        image_paths, labels, mask_paths = [], [], []
+        self.cls_list = []
+        if self.defect_type == 'good':
+            defect_types = ['good']
+        elif self.defect_type == 'logical_anomalies':
+            defect_types = ['logical_anomalies']
+        elif self.defect_type == 'structural_anomalies':
+            defect_types = ['structural_anomalies']
+        elif self.defect_type == 'ALL':
+            defect_types = ['good', 'logical_anomalies', 'structural_anomalies']
+
+        for defect_type in defect_types:
+            
+            img_dir = os.path.join(self.dataset_path, self.class_name, "test", defect_type)
+            gt_dir = os.path.join(self.dataset_path, self.class_name, 'ground_truth', defect_type)
+
+            image_paths.extend(sorted(glob.glob(img_dir + '/*.png')))
+            self.cls_list.extend([self.class_name] * len(image_paths))
+            
+            if defect_type == 'good':
+                labels.extend([0] * len(image_paths))
+                mask_paths.extend([None] * len(image_paths))
+            else:
+                labels.extend([1] * len(image_paths))
+                gt_dirs = sorted(glob.glob(gt_dir + '/*'))
+                for gt_dir in gt_dirs:
+                    gt_paths = sorted(glob.glob(gt_dir + '/*.png'))
+                    mask_paths.append(gt_paths)
+
+        return image_paths, labels, mask_paths
+
+
+def mvtecLoco_train_loader(args):
+    dataset = MVTecLoco_TrainDataset(dataset_path=args.data_path, class_name=None, img_size=args.image_size, split='train')
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=True, drop_last=True, pin_memory=True)
+    return data_loader
+
+def mvtecLoco_val_loader(args):
+    dataset = MVTecLoco_TrainDataset(dataset_path=args.data_path, class_name=None, img_size=args.image_size, split='validation')
+    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
+    return data_loader
+
+def mvtecLoco_test_loader(args, class_name, split, defect_type='ALL'):
+    if split == "memory":
+        dataset = MVTecLoco_TrainDataset(dataset_path=args.data_path, class_name=class_name, img_size=args.image_size, split='train')
+        data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
+    elif split == "test":
+        dataset = MVTecLoco_TestDataset(dataset_path=args.data_path, class_name=class_name, img_size=args.image_size, defect_type=defect_type)
         data_loader = DataLoader(dataset=dataset, batch_size=1, num_workers=args.workers, shuffle=False, drop_last=False, pin_memory=True)
     return data_loader

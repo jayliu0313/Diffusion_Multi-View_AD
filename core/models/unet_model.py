@@ -69,7 +69,7 @@ class MyUNet2DConditionModel(UNet2DConditionModel):
 
         emb = self.time_embedding(t_emb, timestep_cond)
         aug_emb = None
-
+        # 
         if self.class_embedding is not None:
             if class_labels is None:
                 raise ValueError("class_labels should be provided when num_class_embeds > 0")
@@ -87,6 +87,7 @@ class MyUNet2DConditionModel(UNet2DConditionModel):
                 emb = torch.cat([emb, class_emb], dim=-1)
             else:
                 emb = emb + class_emb
+            
 
         if self.config.addition_embed_type == "text":
             aug_emb = self.add_embedding(encoder_hidden_states)
@@ -138,7 +139,7 @@ class MyUNet2DConditionModel(UNet2DConditionModel):
             sample = torch.cat([sample, hint], dim=1)
 
         emb = emb + aug_emb if aug_emb is not None else emb
-
+        # print(emb.shape)
         if self.time_embed_act is not None:
             emb = self.time_embed_act(emb)
 
@@ -232,7 +233,7 @@ class MyUNet2DConditionModel(UNet2DConditionModel):
 
         if is_controlnet:
             sample = sample + mid_block_additional_residual
-
+        
         # 5. up
         up_ft = {}
         for i, upsample_block in enumerate(self.up_blocks):

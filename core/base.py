@@ -18,13 +18,21 @@ from utils.ptp_utils import *
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
+LOCO_AD = {
+    "breakfast_box" : { "good": 102, "SA":90, "LA":83},
+    "juice_bottle" : { "good": 94, "SA":94, "LA":142},
+    "pushpins" : { "good": 138, "SA":81, "LA":91},
+    "screw_bag" : { "good": 122, "SA":82, "LA":137},
+    "splicing_connectors" : { "good": 119, "SA":85, "LA":108},
+}
+
 class Base_Method():
     def __init__(self, args, cls_path):
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.initialize_score()
         self.data_type = args.dataset_type
-        self.blur = KNNGaussianBlur()
+        self.blur = KNNGaussianBlur(4)
         self.criteria = torch.nn.MSELoss()    
         
         self.patch_lib = []
@@ -67,7 +75,7 @@ class Base_Method():
     def predict(self, item, lightings, gt, label):
         pass
     
-    def calculate_metrics(self, modality_name):
+    def calculate_metrics(self, modality_name, cls_name=None):
 
         image_labels = np.stack(self.image_labels)
         pixel_labels = np.stack(self.pixel_labels)
@@ -81,6 +89,17 @@ class Base_Method():
         else:
             image_preds = np.stack(self.image_preds)
             pixel_preds = np.stack(self.pixel_preds)
+
+        if modality_name == "SA":
+            image_labels = np.concatenate((image_labels[:LOCO_AD[cls_name]["good"]], image_labels[-LOCO_AD[cls_name]["SA"]:]))
+            image_preds = np.concatenate((image_preds[:LOCO_AD[cls_name]["good"]], image_preds[-LOCO_AD[cls_name]["SA"]:]))
+            pixel_preds = np.concatenate((pixel_preds[:LOCO_AD[cls_name]["good"]], pixel_preds[-LOCO_AD[cls_name]["SA"]:]))
+            pixel_labels = np.concatenate((pixel_labels[:LOCO_AD[cls_name]["good"]], pixel_labels[-LOCO_AD[cls_name]["SA"]:])).flatten()
+        elif modality_name == "LA":
+            image_labels = image_labels[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
+            image_preds = image_preds[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
+            pixel_preds = pixel_preds[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
+            pixel_labels = pixel_labels[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]].flatten()
             
         flatten_pixel_labels = pixel_labels.flatten()
         flatten_pixel_preds = pixel_preds.flatten()
@@ -96,16 +115,33 @@ class Base_Method():
     def get_rec_loss(self):
         return self.cls_rec_loss
     
-    def visualizae_heatmap(self, modality_name):
+    def visualizae_heatmap(self, modality_name, cls_name=None):
         self.pixel_labels = np.stack(self.pixel_labels)
         cls_path = os.path.join(self.cls_path, modality_name)
         if modality_name == 'RGB' and self.rgb_pixel_preds:
             pixel_preds = np.stack(self.rgb_pixel_preds)
         elif modality_name == 'Nmap' and self.nmap_pixel_preds:
             pixel_preds = np.stack(self.nmap_pixel_preds)
-        elif modality_name == 'RGB+Nmap' and self.pixel_preds:
+        elif (modality_name == 'RGB+Nmap' or modality_name == 'ALL') and self.pixel_preds:
             pixel_preds = np.stack(self.pixel_preds)
         else:
+            pixel_preds = np.stack(self.pixel_preds)
+            if modality_name == 'SA':
+                pixel_preds = np.concatenate((pixel_preds[:LOCO_AD[cls_name]["good"]], pixel_preds[-LOCO_AD[cls_name]["SA"]:]))
+                score_map = pixel_preds.reshape(-1, self.image_size, self.image_size)
+                gt_mask = np.squeeze(np.array(np.concatenate((self.pixel_labels[:LOCO_AD[cls_name]["good"]], self.pixel_labels[-LOCO_AD[cls_name]["SA"]:])), dtype=np.bool_))
+                image_list = np.concatenate((self.image_list[:LOCO_AD[cls_name]["good"]], self.image_list[-LOCO_AD[cls_name]["SA"]:]))
+                image_labels = np.concatenate((self.image_labels[:LOCO_AD[cls_name]["good"]], self.image_labels[-LOCO_AD[cls_name]["SA"]:]))
+                image_preds = np.concatenate((self.image_preds[:LOCO_AD[cls_name]["good"]], self.image_preds[-LOCO_AD[cls_name]["SA"]:]))
+                visualization(image_list, image_labels, image_preds, gt_mask, score_map, cls_path)
+            elif modality_name == 'LA':
+                pixel_preds = pixel_preds[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
+                score_map = pixel_preds.reshape(-1, self.image_size, self.image_size)
+                gt_mask = np.squeeze(np.array(self.pixel_labels[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]], dtype=np.bool_))
+                image_list = self.image_list[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
+                image_labels =self.image_labels[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
+                image_preds = self.image_preds[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
+                visualization(image_list, image_labels, image_preds, gt_mask, score_map, cls_path)
             return
 
         score_map = pixel_preds.reshape(-1, self.image_size, self.image_size)

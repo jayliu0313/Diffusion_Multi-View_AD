@@ -1,4 +1,4 @@
-from core.data import test_lightings_loader, mvtec3D_test_loader, mvtec_test_loader
+from core.data import test_lightings_loader, mvtec3D_test_loader, mvtec_test_loader, mvtecLoco_test_loader
 from core.ddim_recconstruct_method import *
 from core.ddim_memory_method import *
 from tqdm import tqdm
@@ -19,12 +19,14 @@ class Runner():
             self.method = DDIM_Memory(args, cls_path)
         elif args.method_name == "ddiminvrgb_memory":
             self.method = DDIMInvRGB_Memory(args, cls_path)
+        elif args.method_name == "ddiminvloco_memory":
+            self.method = DDIMInvLoco_Memory(args, cls_path)
         elif args.method_name == "ddiminvnmap_memory":
             self.method = DDIMInvNmap_Memory(args, cls_path)
         elif args.method_name == "ddiminvunified_memory":
             self.method = DDIMInvUnified_Memory(args, cls_path)
-        elif args.method_name == "ddiminvunified_timefusion_memory":
-            self.method = DDIMInvUnified_TimeFusion_Memory(args, cls_path)
+        # elif args.method_name == "controlnet_infonce_memory":
+        #     self.method = ControlNet_InfoNCE_Memory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
         elif args.method_name == "controlnet_rec":
@@ -48,24 +50,30 @@ class Runner():
             self.test_loader = mvtec3D_test_loader(args, cls, "test")
         elif args.dataset_type == "mvtec2d":
             self.memory_loader = mvtec_test_loader(args, cls, "memory")
-            self.test_loader = mvtec_test_loader(args, cls, "test")    
+            self.test_loader = mvtec_test_loader(args, cls, "test")
+        elif args.dataset_type == "mvtecloco":
+            self.memory_loader = mvtecLoco_test_loader(args, cls, "memory")
+            self.test_loader = mvtecLoco_test_loader(args, cls, "test")
+        
+        if args.is_align:
+            args.batch_size = 1
+            self.align_loader = mvtec3D_test_loader(args, cls, "memory") 
             
     def fit(self):
         with torch.no_grad():
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(self.memory_loader, desc=f'Extracting train features for class {self.cls}')):
-                # if i == 2:
+                # if i == 4:
                 #     break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
             self.method.run_coreset()
 
     def alignment(self):
-        dataloader = test_lightings_loader(self.args, self.cls, "memory_align")
         with torch.no_grad():
             print(f'Computing weight and bias for alignment')
-            for i, (lightings, nmap, text_prompt) in enumerate(tqdm(dataloader, desc=f'Extracting train features for class {self.cls}')):
-                # if i == 25:
-                #     break
+            for i, (lightings, nmap, text_prompt) in enumerate(tqdm(self.align_loader, desc=f'Extracting train features for class {self.cls}')):
+                if i == 25:
+                    break
                 text_prompt = f'A photo of a {self.cls}'  
                 self.method.predict_align_data(lightings, nmap, text_prompt)
             self.method.cal_alignment()
@@ -81,14 +89,14 @@ class Runner():
 
         if self.args.viz:
             for modality_name in self.modality_names:
-                self.method.visualizae_heatmap(modality_name)
+                self.method.visualizae_heatmap(modality_name, self.cls)
         
         image_rocaucs = dict()
         pixel_rocaucs = dict()
         au_pros = dict()
         rec_losses = dict()
         for modality_name in self.modality_names:
-            image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics(modality_name)
+            image_rocauc, pixel_rocauc, au_pro = self.method.calculate_metrics(modality_name, self.cls)
             image_rocaucs[modality_name] = round(image_rocauc, 3)
             pixel_rocaucs[modality_name] = round(pixel_rocauc, 3)
             au_pros[modality_name] = round(au_pro, 3)
