@@ -16,6 +16,7 @@ from diffusers.models.lora import (
     LoRALinearLayer,
 )
 
+from ptflops import get_model_complexity_info
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -324,3 +325,4 @@ class ControlLoRAModel(ControlNetModel):
         controllora.tie_weights(unet)
 
         return controllora
+

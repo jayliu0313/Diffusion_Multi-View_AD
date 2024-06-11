@@ -25,8 +25,8 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="ddiminvloco_memory", help=" \
-Reconstruction Base: controlnet_rec, ddim_rec, nullinv_rec, \
+parser.add_argument('--method_name', default="loco_rec", help=" \
+Reconstruction Base: controlnet_rec, ddim_rec, nullinv_rec, loco_rec\
 DDIM Base: ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvloco_memory \
 ddiminvunified_memory, controlnet_infonce_memory, controlnet_ddiminv_memory\
 ")
@@ -35,24 +35,32 @@ parser.add_argument('--rgb_weight', type=float, default=1)
 parser.add_argument('--nmap_weight', type=float, default=1)
 parser.add_argument('--reweight', default=False, type=bool)
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
-parser.add_argument('--feature_layers', default=[2, 3], type=int)
-parser.add_argument('--topk', default=1, type=int)
+parser.add_argument('--feature_layers', default=[3], type=int)
+
+
+parser.add_argument('--g_feature_layers', default=[1, 2], type=int, help="just works on mvtec-loco")
+parser.add_argument('--num_class', default=5, type=int, help="just works on mvtec-loco")  
+parser.add_argument('--topk', default=3, type=int)
 
 #### Load Checkpoint ####
 parser.add_argument("--load_vae_ckpt", default="")
-parser.add_argument("--load_unet_ckpt", default="/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec3D/epoch10_unet.pth")
+parser.add_argument("--load_unet_ckpt", default="")
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_allcls/best_unet.pth"
 # "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_ckpt6_allcls/best_unet.pth"
 # "checkpoints/diffusion_checkpoints/TrainMVTec2D_UnetV1-5_woAug/best_unet.pth"
+
+# Loco-AD
+# "/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec_Loco/epoch10_unet.pth"
+# checkpoints/diffusion_checkpoints/TrainMVTecLoco_RGBEdgemap/epoch10_unet.pth
+
 # Mvtec AD
 #  "/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec/epoch_unet.pth"
 # MVTec 3D-AD
 # "/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec3D/epoch10_unet.pth"
-# loco AD
-# "/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec_Loco/unet.pth"
 
-parser.add_argument('--load_controlnet_ckpt', type=str, default="checkpoints/controlnet_model/mvtec3d_diff_modailty_feature_loss/best_controlnet.pth")
+
+parser.add_argument('--load_controlnet_ckpt', type=str, default="")
 # "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/with_woFlossUnet/epoch51_controlnet.pth"
 # "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/with_woFLossUnet_woFLoss/epoch36_controlnet.pth"
 # "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/MVTec3D/epoch40_controlnet.pth"
@@ -63,7 +71,8 @@ parser.add_argument("--diffusion_id", type=str, default="runwayml/stable-diffusi
 parser.add_argument("--revision", type=str, default="", help="v1-4:ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c, v1-5:null")
 
 # parser.add_argument("--noise_intensity", type=int, default=81)
-parser.add_argument("--noise_intensity", type=int, default=[61, 81])
+parser.add_argument("--noise_intensity", type=int, default=[81])
+parser.add_argument("--rec_noise_intensity", type=int, default=[101], help="for loco AD rec")
 parser.add_argument("--step_size", type=int, default=20)
 
 # Controlnet Model Setup
@@ -72,23 +81,25 @@ parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
 
 # test_t = [[1], [21], [41], [61], [1, 21]]
 # test_t = [[81, 101, 121], [81, 101]]
-test_t = [[41]]
-rgb_w = [1] #[0.4, 0.35]
-nmap_w = [1] #[0.6, 0.65]
+test_t = [[81]]
+
+f_layers = [[3]]
+step_sizes = [5, 10, 20, 40]
+
 def run(args):
     MODALITY_NAMES = ['RGB', 'Nmap', 'RGB+Nmap']
     if args.dataset_type=='eyecandies':
         classes = [
         'CandyCane',
-        'ChocolateCookie',
-        'ChocolatePraline',
-        'Confetto',
-        'GummyBear',
-        'HazelnutTruffle',
-        'LicoriceSandwich',
-        'Lollipop',
-        'Marshmallow',
-        'PeppermintCandy'
+        # 'ChocolateCookie',
+        # 'ChocolatePraline',
+        # 'Confetto',
+        # 'GummyBear',
+        # 'HazelnutTruffle',
+        # 'LicoriceSandwich',
+        # 'Lollipop',
+        # 'Marshmallow',
+        # 'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = [
@@ -125,7 +136,10 @@ def run(args):
         args.data_path = "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_2D/"
     elif args.dataset_type=='mvtecloco':
         classes = [
-            'breakfast_box', 'juice_bottle', 'pushpins', 'screw_bag', 'splicing_connectors'
+            'breakfast_box', 
+            'juice_bottle', 'pushpins', 
+            'screw_bag', 
+            'splicing_connectors'
         ]
         MODALITY_NAMES = ['SA', 'LA', 'ALL']
         args.data_path = "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
@@ -139,8 +153,6 @@ def run(args):
         runner = Runner(args, cls, MODALITY_NAMES)
         if "memory" in args.method_name:
             runner.fit()
-        if args.is_align:
-            runner.alignment()
         image_rocaucs, pixel_rocaucs, au_pros, rec_loss = runner.evaluate()
         image_rocaucs_df[cls.title()] = image_rocaucs_df['Method'].map(image_rocaucs)
         pixel_rocaucs_df[cls.title()] = pixel_rocaucs_df['Method'].map(pixel_rocaucs)
@@ -173,15 +185,16 @@ def run(args):
 
 if __name__ == "__main__":    
     for i in test_t:
-        for j in range(len(rgb_w)):
+        for j in step_sizes:
             args = parser.parse_args()
             args.noise_intensity = i
-            args.rgb_weight = rgb_w[j]
-            args.nmap_weight = nmap_w[j]
+            # args.topk = topk[j]
+            print(j)
+            args.step_size = j
             if DEBUG == True:
                 FILE_NAME = "Testing"
             else:
-                FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_RGBW{args.rgb_weight}_NmapW{args.nmap_weight}_OnlyGmap"
+                FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_Layer{args.feature_layers}_StepSize{args.step_size}_InferenceSpeed"
 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")

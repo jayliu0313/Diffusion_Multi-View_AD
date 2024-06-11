@@ -43,7 +43,7 @@ class Base_Method():
         self.cls_rec_loss = 0.0
         self.reconstruct_path = os.path.join(cls_path, "Reconstruction")
         self.score_type = args.score_type
-        
+        self.viz = args.viz
         self.pdist = torch.nn.PairwiseDistance(p=2, eps= 1e-12)
         self.cos = torch.nn.CosineSimilarity()
         self.average = torch.nn.AvgPool2d(3, stride=1)
@@ -75,6 +75,9 @@ class Base_Method():
     def predict(self, item, lightings, gt, label):
         pass
     
+    def cluster_training_data(self):
+        pass
+
     def calculate_metrics(self, modality_name, cls_name=None):
 
         image_labels = np.stack(self.image_labels)
@@ -142,17 +145,21 @@ class Base_Method():
                 image_labels =self.image_labels[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
                 image_preds = self.image_preds[:LOCO_AD[cls_name]["good"] + LOCO_AD[cls_name]["LA"]]
                 visualization(image_list, image_labels, image_preds, gt_mask, score_map, cls_path)
-            return
+            
 
         score_map = pixel_preds.reshape(-1, self.image_size, self.image_size)
         gt_mask = np.squeeze(np.array(self.pixel_labels, dtype=np.bool_))
+        # visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, cls_path)
         
         # score_map_z = z_score_normalization(score_map.flatten())
         # score_map_mn = min_max_normalization(score_map.flatten())
         # visualize_perpixel_distribute(score_map.flatten(), gt_mask, cls_path, "distribution_wonormalize")
         # visualize_perpixel_distribute(score_map_z, gt_mask, cls_path, "distribution_of_zscore")
         # visualize_perpixel_distribute(score_map_mn, gt_mask, cls_path, "distribution_of_minmax")
-        visualization(self.image_list, self.image_labels, self.image_preds, gt_mask, score_map, cls_path)
+        rgb_s = np.array(self.image_preds)
+        label = np.array(self.image_labels)
+        
+        visualize_image_s_distribute(rgb_s, label, cls_path)
         
         
     def cal_alignment(self):
@@ -191,6 +198,8 @@ class DDIM_Method(Base_Method):
         self.num_inference_timesteps = int(len(self.noise_scheduler.timesteps) / args.step_size)
         self.noise_scheduler.set_timesteps(self.num_inference_timesteps)
         self.timesteps_list = self.noise_scheduler.timesteps[self.noise_scheduler.timesteps <= max(args.noise_intensity)]
+
+        
         self.text_encoder.to(self.device)
         self.step_size = args.step_size
         print("num_inference_timesteps")
@@ -226,6 +235,11 @@ class DDIM_Method(Base_Method):
           
         # Prepare text embedding
         self.uncond_embeddings = self.get_text_embedding("", 6) # [6, 77, 768]
+
+        self.mul_timesteps = args.noise_intensity
+        self.reweight = args.reweight
+        self.feature_layers = args.feature_layers
+        self.topk = args.topk
     
     @torch.no_grad()
     def image2latents(self, x):

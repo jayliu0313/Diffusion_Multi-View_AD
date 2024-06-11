@@ -1,8 +1,8 @@
 import torch
-import torch.nn as nn
-from core.models.network_util import *
+from torch.autograd import Variable
 from typing import Any, Dict, List, Optional, Tuple, Union
 from diffusers import UNet2DConditionModel
+from ptflops import get_model_complexity_info
 
 class MyUNet2DConditionModel(UNet2DConditionModel):
     def forward(
@@ -287,3 +287,35 @@ def build_unet(args):
         # revision=args.revision
     )
     return unet
+
+
+def prepare_input_unet(input_res):
+    t = 20
+    x0 = torch.FloatTensor(8, 4, 32, 32)
+    x2 = torch.FloatTensor(8, 77, 768)
+    return dict(sample = x0, timestep = t, encoder_hidden_states = x2)
+
+def prepate_input_controlNet(input_res):
+    t = 20
+    x0 = torch.FloatTensor(8, 4, 32, 32)
+    x2 = torch.FloatTensor(8, 77, 768)
+    x3 = torch.FloatTensor(8, 3, 256, 256)
+    return dict(sample = x0, timestep = t, encoder_hidden_states = x2, controlnet_cond=x3, guess_mode=False, return_dict=False)
+
+from core.models.controllora import ControlLoRAModel
+if __name__ == '__main__':
+    unet = MyUNet2DConditionModel.from_pretrained(
+        "CompVis/stable-diffusion-v1-4",
+        subfolder="unet",
+        # revision=args.revision
+    )
+    print("Unet Model:")
+    flops, params = get_model_complexity_info(unet, input_res=(8, 4, 32, 32), input_constructor=prepare_input_unet, as_strings=True, print_per_layer_stat=False)
+    print('Flops: ', flops)
+    print('Params: ', params)
+
+    print("\nControlNet Model:")
+    controllora = ControlLoRAModel.from_unet(unet, lora_linear_rank=4, lora_conv2d_rank=0)
+    flops, params = get_model_complexity_info(controllora, input_res=(8, 4, 32, 32), input_constructor=prepate_input_controlNet, as_strings=True, print_per_layer_stat=False)
+    print('Flops: ', flops)
+    print('Params: ', params)

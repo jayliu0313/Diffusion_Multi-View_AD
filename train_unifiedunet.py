@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
-from core.data import train_lightings_loader, val_lightings_loader, mvtec3D_train_loader, mvtec3D_val_loader
+from core.data import *
 
 import torch.nn.functional as F
 from transformers import CLIPTextModel, AutoTokenizer
@@ -19,12 +19,15 @@ matplotlib.use('Agg')
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
-parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/", type=str)
-parser.add_argument('--dataset_type', default="mvtec3d", help="eyecandies, mvtec3d")
-parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainUnetMVTec3D_DepthRGB_V1-4_Aug")
+parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/", type=str)
+# "/mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/"
+# "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
+
+parser.add_argument('--dataset_type', default="mvtecloco", help="eyecandies, mvtec3d, mvtecloco")
+parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTecLoco_RGBEdgemap")
 parser.add_argument('--load_unet_ckpt', default="")
 parser.add_argument('--image_size', default=256, type=int)
-parser.add_argument('--batch_size', default=6, type=int)
+parser.add_argument('--batch_size', default=2, type=int)
 
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
@@ -42,7 +45,7 @@ parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CU
 parser.add_argument("--lr_scheduler", type=str, default="constant", help=('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'' "constant", "constant_with_warmup"]'),)
 parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
 parser.add_argument('--epoch', default=0, type=int, help="Which epoch to start training at")
-parser.add_argument("--num_train_epochs", type=int, default=10)
+parser.add_argument("--num_train_epochs", type=int, default=100)
 parser.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler.")
 parser.add_argument("--save_epoch", type=int, default=2)
 
@@ -62,7 +65,6 @@ def export_loss(save_path, loss_list):
     plt.close("all")
 
 def denormalization(x):
-    
     x = (x.transpose(1, 2, 0) * 255.).astype(np.uint8)
     return x
 
@@ -70,6 +72,15 @@ def cos_loss(a, b):
     cos_loss = nn.CosineSimilarity()
     loss = torch.mean(1-cos_loss(a.view(a.shape[0],-1),b.view(b.shape[0],-1)))
     return loss
+
+def display(image, save_path):
+    # 將張量轉換為numpy數組
+    image_array = image.permute(1, 2, 0).numpy()
+
+    # 顯示圖像
+    plt.imshow(image_array)
+    plt.axis('off')  # 關閉坐標軸
+    plt.savefig(save_path)
 
 class TrainUnet():
     def __init__(self, args, device):
@@ -79,8 +90,12 @@ class TrainUnet():
         self.image_size = args.image_size
         self.num_train_epochs = args.num_train_epochs
         self.save_epoch = args.save_epoch
+        self.viz_save_path = osp.join(args.ckpt_path, "visualize")
         self.train_log_file = open(osp.join(args.ckpt_path, "training_log.txt"), "a", 1)
         self.val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
+
+        if not os.path.exists(self.viz_save_path):
+            os.makedirs(self.viz_save_path)
 
         # Load training and validation data
         if args.dataset_type == "eyecandies":
@@ -89,7 +104,9 @@ class TrainUnet():
         elif args.dataset_type == "mvtec3d":
             self.train_dataloader = mvtec3D_train_loader(args)
             self.val_dataloader = mvtec3D_val_loader(args)
-            
+        elif args.dataset_type == "mvtecloco":
+            self.train_dataloader = mvtecLoco_train_loader(args)
+            self.val_dataloader = mvtecLoco_val_loader(args)   
         # Create Model
         self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")
         self.text_encoder = CLIPTextModel.from_pretrained(args.diffusion_id, subfolder="text_encoder")
@@ -238,14 +255,15 @@ class TrainUnet():
             epoch_feature_loss = 0.0
             epoch_cos_loss = 0.0
             i = 0
-            for lightings, nmaps, text_prompt in tqdm(self.train_dataloader, desc="Training"):
-                # i+=1
-                # if i == 5:
-                #     break
+            for images, nmaps, text_prompt in tqdm(self.train_dataloader, desc="Training"):
                 # print(lightings.shape)
                 # self.visualize(lightings[0], nmaps[0], i)
+                if i % 40 == 0 and epoch == 0:
+                    display(nmaps[0], osp.join(self.viz_save_path, "edgemap_" + str(epoch) + "_" + str(i) + ".png"))
+                    display(images[0], osp.join(self.viz_save_path, "rgb_" + str(epoch) + "_" + str(i) + ".png"))
+                i+=1
                 self.optimizer.zero_grad()
-                lightings = lightings.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
+                lightings = images.to(self.device).view(-1, 3, self.image_size, self.image_size) # [bs * 6, 3, 256, 256]
 
                 text_embedding = self.get_text_embedding(text_prompt)
                 text_embeddings = text_embedding
@@ -279,7 +297,7 @@ class TrainUnet():
                 nmap_pred_noise = nmap_model_output['sample']
                 nmap_noise_loss = F.mse_loss(nmap_pred_noise.float(), nmap_noise.float(), reduction="mean")
 
-                loss = 0.2 * nmap_noise_loss + 0.8 * noise_loss
+                loss = nmap_noise_loss + noise_loss
                 loss.backward()
                 epoch_loss += loss.item()
                 epoch_nmap_noise_loss += nmap_noise_loss.item()
@@ -307,8 +325,8 @@ class TrainUnet():
             self.train_log_file.write('Training - Epoch {} Loss: {:.6f}, rgb noise loss: {:.6f}, nmap noise loss: {:.6f}, feature loss:{:.6f}\n'.format(epoch, epoch_loss, epoch_rgb_noise_loss, epoch_nmap_noise_loss, epoch_feature_loss))
 
             # save model
-            if epoch == 10:
-                model_path = args.ckpt_path + f'/epoch10_unet.pth'
+            if epoch % 10 == 0 and epoch >= 10:
+                model_path = args.ckpt_path + f'/epoch{epoch}_unet.pth'
                 torch.save(self.unet.state_dict(), model_path)
                 print("### Save Model ###")
             # if epoch == self.num_train_epochs - 1:

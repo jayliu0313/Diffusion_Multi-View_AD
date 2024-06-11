@@ -9,13 +9,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-from core.data import train_lightings_loader, val_lightings_loader, mvtec3D_train_loader, mvtec3D_val_loader
+from core.data import *
 from transformers import CLIPTextModel, AutoTokenizer
 from diffusers import AutoencoderKL, DDPMScheduler
 from diffusers.optimization import get_scheduler
 from core.models.unet_model import build_unet
 from core.models.controllora import ControlLoRAModel
-# from utils.performace_testing import Memorybank_testing
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -26,6 +25,7 @@ parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Datasets/mvtec3d_preprocessing/", type=str)
 # "/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/"
 # "/mnt/home_6T/public/samchu0218/Datasets/mvtec3d_preprocessing/"
+#"/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
 parser.add_argument('--ckpt_path', default="./checkpoints/controlnet_model/mvtec3d_InfoNCE/") # 
 parser.add_argument('--load_vae_ckpt', default=None)
 parser.add_argument('--load_unet_ckpt', default="/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec3D/epoch10_unet.pth")
@@ -285,6 +285,9 @@ class TrainUnet():
             self.train_dataloader = mvtec3D_train_loader(args)
             self.val_dataloader = mvtec3D_val_loader(args)
             self.contrastive = ContrastiveLoss()
+        elif args.dataset_type == "mvtecloco":
+            self.train_dataloader = mvtecLoco_train_loader(args)
+            self.val_dataloader = mvtecLoco_val_loader(args)
 
         # Create Model
         self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")
@@ -422,7 +425,6 @@ class TrainUnet():
                     val_feature_loss += feature_loss.item()
                 if self.dataset_type == "mvtec3d" and self.use_floss:
                     feature_loss = self.contrastive(model_output)
-                    # feature_loss = compute_diff_modality_loss(model_output)
                     loss = noise_loss + 0.001 * feature_loss
                     val_noise_loss += noise_loss.item()
                     val_feature_loss += feature_loss.item()

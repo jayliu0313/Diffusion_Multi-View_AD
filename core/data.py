@@ -2,14 +2,13 @@ import os
 import glob
 from PIL import Image
 from torchvision import transforms
-from einops import repeat, rearrange
 import glob
 from torch.utils.data import Dataset
 from utils.mvtec3d_util import *
 from utils.pair_augment import *
 from utils.utils import CutPaste
 from torch.utils.data import DataLoader
-
+import cv2
 import numpy as np
 import random
 
@@ -152,6 +151,7 @@ class MemoryLightings(BaseDataset):
         text_prompt = "A photo of a " + self.cls 
         # text_prompt = ""
         normal_map = Image.open(normal_path).convert('RGB')
+        
         n_map = []
         n_map.append(normal_map)
         images = []
@@ -942,7 +942,6 @@ class MVTecLoco_TrainDataset(Dataset):
 
         self.image_paths, self.labels = self.load_dataset_folder()
         self.transform_img = transforms.Compose([
-            transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor()])
 
     def __len__(self):
@@ -954,8 +953,19 @@ class MVTecLoco_TrainDataset(Dataset):
         text_prompt = "A photo of a " + cls
 
         image = Image.open(image).convert("RGB")
+        
+        image = np.array(image)
+        image = cv2.resize(image, (self.img_size, self.img_size), interpolation=cv2.INTER_AREA)
+        
+        # create edge map
+        img_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        edge_image = cv2.Canny(img_gray, 50, 100)
+        edge_image = edge_image[:, :, None]
+        edge_image = np.concatenate([edge_image, edge_image, edge_image], axis=2)
+        edge_image = self.transform_img(edge_image)
+
         image = self.transform_img(image)
-        return image, torch.zeros_like(image), text_prompt
+        return image, edge_image, text_prompt
 
     def load_dataset_folder(self):
 
@@ -967,10 +977,11 @@ class MVTecLoco_TrainDataset(Dataset):
 
         for cls in self.class_list:
             img_dir = os.path.join(self.dataset_path, cls, self.split, "good")
-            image_paths.extend(sorted(glob.glob(img_dir + '/*.png')))
-            labels.extend([0] * len(image_paths))
-            self.cls_list.extend([cls] * len(image_paths))
-
+            cls_files = sorted(glob.glob(img_dir + '/*.png'))
+            image_paths.extend(cls_files)
+            labels.extend([0] * len(cls_files))
+            self.cls_list.extend([cls] * len(cls_files))
+        assert len(image_paths) == len(labels) and len(labels) == len(self.cls_list)
         return image_paths, labels
     
 class MVTecLoco_TestDataset(Dataset):
@@ -991,7 +1002,6 @@ class MVTecLoco_TestDataset(Dataset):
         self.image_paths, self.labels, self.mask_paths = self.load_dataset_folder()
 
         self.transform_img = transforms.Compose([
-            transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor()])
 
         self.transform_mask = transforms.Compose([
@@ -1008,7 +1018,19 @@ class MVTecLoco_TestDataset(Dataset):
         text_prompt = "A photo of a " + cls
 
         image = Image.open(image).convert("RGB")
+
+        image = np.array(image)
+        image = cv2.resize(image, (self.img_size, self.img_size), interpolation=cv2.INTER_AREA)
+        
+        # create edge map
+        img_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        edge_image = cv2.Canny(img_gray, 50, 100)
+        edge_image = edge_image[:, :, None]
+        edge_image = np.concatenate([edge_image, edge_image, edge_image], axis=2)
+        edge_image = self.transform_img(edge_image)
+
         image = self.transform_img(image)
+
         
         if label == 0:
             mask = torch.zeros([1, self.img_size, self.img_size])
@@ -1020,7 +1042,7 @@ class MVTecLoco_TestDataset(Dataset):
                 tmp_mask = torch.where(tmp_mask > 0.5, 1., .0)
                 mask = torch.logical_or(mask, tmp_mask)
 
-        return (image, torch.zeros_like(image), text_prompt), mask[:1], label
+        return (image, edge_image, text_prompt), mask[:1], label
 
     def load_dataset_folder(self):
 
@@ -1040,19 +1062,21 @@ class MVTecLoco_TestDataset(Dataset):
             img_dir = os.path.join(self.dataset_path, self.class_name, "test", defect_type)
             gt_dir = os.path.join(self.dataset_path, self.class_name, 'ground_truth', defect_type)
 
-            image_paths.extend(sorted(glob.glob(img_dir + '/*.png')))
-            self.cls_list.extend([self.class_name] * len(image_paths))
+            file_paths = sorted(glob.glob(img_dir + '/*.png'))
+            image_paths.extend(file_paths)
+            self.cls_list.extend([self.class_name] * len(file_paths))
             
             if defect_type == 'good':
-                labels.extend([0] * len(image_paths))
-                mask_paths.extend([None] * len(image_paths))
+                labels.extend([0] * len(file_paths))
+                mask_paths.extend([None] * len(file_paths))
             else:
-                labels.extend([1] * len(image_paths))
+                labels.extend([1] * len(file_paths))
                 gt_dirs = sorted(glob.glob(gt_dir + '/*'))
                 for gt_dir in gt_dirs:
                     gt_paths = sorted(glob.glob(gt_dir + '/*.png'))
                     mask_paths.append(gt_paths)
-
+                    
+        assert len(image_paths) == len(labels) and len(labels) == len(mask_paths)
         return image_paths, labels, mask_paths
 
 

@@ -103,8 +103,8 @@ def visualization(test_image_list, gt_label, score_label, gt_mask_list, super_ma
 
     export_test_images(test_image_list, gt_mask, super_mask, seg_threshold, output_dir)
 
-def visualize_image_s_distribute(rgb_s, image_gt):
-    path_dirs = "./output_dir/" + OUT_DIR
+def visualize_image_s_distribute(rgb_s, image_gt, output_dir):
+    path_dirs = os.path.join(output_dir, OUT_DIR)
     os.makedirs(path_dirs, exist_ok=True) 
     image_file = os.path.join(path_dirs, 'image_score_dis.png')
     
@@ -113,24 +113,62 @@ def visualize_image_s_distribute(rgb_s, image_gt):
     # com_s = rgb_s
     x = range(len(rgb_s))
 
-    fig = plt.figure(figsize=(12, 10)) 
-    plt.subplots_adjust(
-                    bottom=0.1, 
-                    top=0.9, 
-                    wspace=0.2, 
-                    hspace=0.35)
+    plt.figure(figsize=(12, 10)) 
+    # plt.subplots_adjust(
+    #                 bottom=0.1, 
+    #                 top=0.9, 
+    #                 wspace=0.2, 
+    #                 hspace=0.35)
     
-    fig.text(0.5, 0.04, s = 'Image ID', ha='center', fontsize=20)
-    fig.text(0.04, 0.4, s = 'Image-level Score', ha='center', rotation='vertical', fontsize=20)
+    # fig.text(0.5, 0.04, s = 'Image ID', ha='center', fontsize=20)
+    # fig.text(0.04, 0.4, s = 'Image-level Score', ha='center', rotation='vertical', fontsize=20)
     
-    ax = fig.add_subplot(312)
-    ax.set_title("RGB image score Distribution", fontsize=18)
-    ax.scatter(x, rgb_s, c=colors[image_gt], s=50)
-    ax.plot(x, rgb_s)
+    # ax = fig.add_subplot(312)
+    plt.title("RGB image score Distribution")
+    plt.scatter(x, rgb_s, c=colors[image_gt], s=20)
+    plt.plot(x, rgb_s)
 
     # plt.legend(loc='best')
     plt.savefig(image_file)
     plt.close()
+
+# def visualize_image_s_distribute(sdf_s, rgb_s, image_gt, output_dir):
+#     path_dirs = os.path.join(output_dir, OUT_DIR)
+#     os.makedirs(path_dirs, exist_ok=True) 
+#     image_file = os.path.join(path_dirs, 'image_score_dis.png')
+    
+#     image_gt = image_gt.reshape(-1)
+#     colors = np.array(["blue", "red"])
+#     com_s = sdf_s * rgb_s
+#     x = range(len(sdf_s))
+
+#     fig = plt.figure(figsize=(12, 10)) 
+#     plt.subplots_adjust(
+#                     bottom=0.1, 
+#                     top=0.9, 
+#                     wspace=0.2, 
+#                     hspace=0.35)
+    
+#     fig.text(0.5, 0.04, s = 'Image ID', ha='center', fontsize=20)
+#     fig.text(0.04, 0.4, s = 'Image-level Score', ha='center', rotation='vertical', fontsize=20)
+
+#     ax = fig.add_subplot(311)
+#     ax.set_title("SDF image score Distribution", fontsize=18)
+#     ax.scatter(x, sdf_s, c=colors[image_gt], s=50)
+#     ax.plot(x, sdf_s)
+    
+#     ax = fig.add_subplot(312)
+#     ax.set_title("RGB image score Distribution", fontsize=18)
+#     ax.scatter(x, rgb_s, c=colors[image_gt], s=50)
+#     ax.plot(x, rgb_s)
+
+#     ax = fig.add_subplot(313)
+#     ax.set_title("Shape-Guided image score Distribution", fontsize=18)
+#     ax.scatter(x, com_s, c=colors[image_gt], s=50)
+#     ax.plot(x, com_s)
+#     # plt.legend(loc='best')
+#     plt.savefig(image_file)
+#     plt.close()
 
 def visualize_perpixel_distribute(score_map, gt_map, output_dir, name):
     path_dirs = output_dir
@@ -269,12 +307,11 @@ def visualize_perpixel_distribute(score_map, gt_map, output_dir, name):
     #     plt.savefig(image_file)
     #     plt.close()
 
-def display_image(images, reconstruct_imgs, cls_path, item):
+def display_image(images, reconstruct_imgs, save_path, item):
     images = images.permute(0, 2, 3, 1)
     images = t2np(images)
     reconstruct_imgs = reconstruct_imgs.permute(0, 2, 3, 1)
     reconstruct_imgs = t2np(reconstruct_imgs)
-    save_path = os.path.join(cls_path, str(item) +".png")
     image_size = images.shape[2] 
     fig = plt.figure(figsize=(12, 5))
     nrows = 2
@@ -362,8 +399,8 @@ def display_mean_fusion(images, reconsturct_imgs, cls_path, item):
     plt.savefig(save_path, dpi=300)
     plt.close()   
     
-def display_one_img(img, rec, cls_path, item):
-    save_path = os.path.join(cls_path, str(item) + "_normal.png")
+def display_one_img(img, rec, save_path):
+    # save_path = os.path.join(cls_path, str(item) + "_normal.png")
 
     fig = plt.figure(figsize=(12, 5))
     img = denormalization(img)

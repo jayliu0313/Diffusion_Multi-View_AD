@@ -5,6 +5,7 @@ from utils.visualize_util import display_one_img, display_image
 from core.models.controllora import  ControlLoRAModel
 from torch.optim.adam import Adam
 import torch.nn.functional as nnf
+import os
 
 class Reconstruct_Method(DDIM_Method):
     def __init__(self, args, cls_path):
@@ -121,7 +122,7 @@ class DDIM_Rec(Reconstruct_Method):
         self.pixel_preds.append(t2np(final_map))
         self.pixel_labels.extend(t2np(gt))
         display_image(lightings, rec_lightings, self.reconstruct_path, i)
-        
+
 class ControlNet_Rec(Reconstruct_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)

@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
-from core.data import train_lightings_loader, val_lightings_loader, mvtec3D_train_loader, mvtec3D_val_loader, mvtec_train_loader, mvtec_test_loader
+from core.data import *
 import matplotlib.pyplot as plt
 
 import torch.nn.functional as F
@@ -20,15 +20,17 @@ matplotlib.use('Agg')
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
-parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/", type=str)
+parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/", type=str)
 # /mnt/home_6T/public/jayliu0313/datasets/Eyecandies/
 # /mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/
 # /mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_2D/
-parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTec3DAD_RGBDepth_UnetV1-4_Aug")
+# "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
+
+parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTecLoco_RGBEdgemap")
 parser.add_argument('--load_unet_ckpt', default="")
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument('--batch_size', default=6, type=int)
-parser.add_argument('--train_type', default="mvtec3d", help="eyecandies_rgb, eyecandies_nmap, mvtec3d, mvtec2d")
+parser.add_argument('--train_type', default="mvtecloco", help="eyecandies_rgb, eyecandies_nmap, mvtec3d, mvtec2d, mvtecloco")
 parser.add_argument('--is_feature_loss', default=False, type=bool)
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
@@ -65,11 +67,11 @@ def export_loss(save_path, loss_list):
     plt.cla()
     plt.close("all")
 
-
 class TrainUnet():
     def __init__(self, args, device):
 
         self.device = device
+        self.viz_save_path = osp.join(args.ckpt_path, "visualize")
         self.bs = args.batch_size
         self.image_size = args.image_size
         self.num_train_epochs = args.num_train_epochs
@@ -78,6 +80,7 @@ class TrainUnet():
         self.val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
         self.type = args.train_type
         self.is_feature_loss = args.is_feature_loss
+
         # Load training and validation data
         if "eyecandies" in args.train_type:
             self.train_dataloader = train_lightings_loader(args)
@@ -88,6 +91,9 @@ class TrainUnet():
         elif args.train_type == "mvtec2d":
             self.train_dataloader = mvtec_train_loader(args)
             self.val_dataloader = mvtec_train_loader(args)
+        elif args.train_type == "mvtecloco":
+            self.train_dataloader = mvtecLoco_train_loader(args)
+            self.val_dataloader = mvtecLoco_val_loader(args)
 
         # Create Model
         self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")
@@ -249,12 +255,9 @@ class TrainUnet():
             epoch_loss = 0.0
             i = 0
             for images, nmaps, text_prompt in tqdm(self.train_dataloader, desc="Training"):
-                # i+=1
-                # if i == 5:
-                #     break
-                # print(text_prompt)
-                numpy_array = images[0].permute(1, 2, 0).numpy()
 
+                numpy_array = images[0].permute(1, 2, 0).numpy()
+                i+=1
                 # 顯示數據
                 # plt.imsave("visualize_output/test" + str(i) + ".png", numpy_array)
                 

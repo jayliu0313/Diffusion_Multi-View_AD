@@ -25,8 +25,6 @@ class Runner():
             self.method = DDIMInvNmap_Memory(args, cls_path)
         elif args.method_name == "ddiminvunified_memory":
             self.method = DDIMInvUnified_Memory(args, cls_path)
-        # elif args.method_name == "controlnet_infonce_memory":
-        #     self.method = ControlNet_InfoNCE_Memory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
         elif args.method_name == "controlnet_rec":
@@ -39,7 +37,7 @@ class Runner():
             return TypeError
         
         self.cls = cls
-        # print(cls)
+
         self.log_file = open(osp.join(cls_path, "class_score.txt"), "a", 1)
         self.method_name = args.method_name
         if args.dataset_type == "eyecandies":
@@ -67,6 +65,7 @@ class Runner():
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
             self.method.run_coreset()
+            self.method.cluster_training_data()
 
     def alignment(self):
         with torch.no_grad():
@@ -82,7 +81,7 @@ class Runner():
         
         with torch.no_grad():
             for i, ((images, nmap, text_prompt), gt, label) in enumerate(tqdm(self.test_loader, desc="Extracting test features")):
-                # if i == 26:
+                # if i == 105:
                 #     break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.predict(i, images, nmap, text_prompt, gt, label)
@@ -90,7 +89,7 @@ class Runner():
         if self.args.viz:
             for modality_name in self.modality_names:
                 self.method.visualizae_heatmap(modality_name, self.cls)
-        
+            
         image_rocaucs = dict()
         pixel_rocaucs = dict()
         au_pros = dict()
