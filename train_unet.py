@@ -31,7 +31,7 @@ parser.add_argument('--load_unet_ckpt', default="")
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument('--batch_size', default=6, type=int)
 parser.add_argument('--train_type', default="mvtecloco", help="eyecandies_rgb, eyecandies_nmap, mvtec3d, mvtec2d, mvtecloco")
-parser.add_argument('--is_feature_loss', default=False, type=bool)
+parser.add_argument('--is_feature_loss', default=True, type=bool)
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4", help="CompVis/stable-diffusion-v1-4, runwayml/stable-diffusion-v1-5")

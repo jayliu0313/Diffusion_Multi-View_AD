@@ -31,7 +31,7 @@ parser.add_argument('--load_vae_ckpt', default=None)
 parser.add_argument('--load_unet_ckpt', default="/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec3D/epoch10_unet.pth")
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument('--batch_size', default=8, type=int)
-parser.add_argument('--dataset_type', default="mvtec3d", help="eyecandies, mvtec3d")
+parser.add_argument('--dataset_type', default="eyecandies", help="eyecandies, mvtec3d")
 parser.add_argument('--use_floss', default=True, type=bool)
 # parser.add_argument('--')
 

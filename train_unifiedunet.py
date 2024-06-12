@@ -23,7 +23,7 @@ parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Raw_D
 # "/mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/"
 # "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
 
-parser.add_argument('--dataset_type', default="mvtecloco", help="eyecandies, mvtec3d, mvtecloco")
+parser.add_argument('--dataset_type', default="eyecandies", help="eyecandies, mvtec3d, mvtecloco")
 parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTecLoco_RGBEdgemap")
 parser.add_argument('--load_unet_ckpt', default="")
 parser.add_argument('--image_size', default=256, type=int)
