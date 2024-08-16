@@ -19,39 +19,26 @@ class Runner():
             self.method = DDIM_Memory(args, cls_path)
         elif args.method_name == "ddiminvrgb_memory":
             self.method = DDIMInvRGB_Memory(args, cls_path)
-        elif args.method_name == "ddiminvloco_memory":
-            self.method = DDIMInvLoco_Memory(args, cls_path)
         elif args.method_name == "ddiminvnmap_memory":
             self.method = DDIMInvNmap_Memory(args, cls_path)
         elif args.method_name == "ddiminvunified_memory":
             self.method = DDIMInvUnified_Memory(args, cls_path)
         elif args.method_name == "controlnet_ddiminv_memory":
             self.method = ControlNet_DDIMInv_Memory(args, cls_path)
-        elif args.method_name == "controlnet_rec":
-            self.method = ControlNet_Rec(args, cls_path)
-        elif args.method_name == "ddim_rec":
-            self.method = DDIM_Rec(args, cls_path)
-        elif args.method_name == "nullinv_rec":
-            self.method = NULLInv_Rec(args, cls_path)
         else:
-            return TypeError
+            raise TypeError
         
         self.cls = cls
 
         self.log_file = open(osp.join(cls_path, "class_score.txt"), "a", 1)
         self.method_name = args.method_name
+        
         if args.dataset_type == "eyecandies":
             self.memory_loader = test_lightings_loader(args, cls, "memory")
             self.test_loader = test_lightings_loader(args, cls, "test")
         elif args.dataset_type == "mvtec3d":
             self.memory_loader = mvtec3D_test_loader(args, cls, "memory")
             self.test_loader = mvtec3D_test_loader(args, cls, "test")
-        elif args.dataset_type == "mvtec2d":
-            self.memory_loader = mvtec_test_loader(args, cls, "memory")
-            self.test_loader = mvtec_test_loader(args, cls, "test")
-        elif args.dataset_type == "mvtecloco":
-            self.memory_loader = mvtecLoco_test_loader(args, cls, "memory")
-            self.test_loader = mvtecLoco_test_loader(args, cls, "test")
         
         if args.is_align:
             args.batch_size = 1

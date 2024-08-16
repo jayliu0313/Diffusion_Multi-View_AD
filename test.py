@@ -26,7 +26,7 @@ parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
 parser.add_argument('--method_name', default="loco_rec", help=" \
-Reconstruction Base: controlnet_rec, ddim_rec, nullinv_rec, loco_rec\
+Reconstruction Base: controlnet_rec, ddim_rec, nullinv_rec\
 DDIM Base: ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvloco_memory \
 ddiminvunified_memory, controlnet_infonce_memory, controlnet_ddiminv_memory\
 ")
@@ -61,9 +61,6 @@ parser.add_argument("--load_unet_ckpt", default="")
 
 
 parser.add_argument('--load_controlnet_ckpt', type=str, default="")
-# "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/with_woFlossUnet/epoch51_controlnet.pth"
-# "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/with_woFLossUnet_woFLoss/epoch36_controlnet.pth"
-# "/home/samchu0218/Multi_Lightings/checkpoints/controlnet_model/MVTec3D/epoch40_controlnet.pth"
 
 # Unet Model (Diffusion Model)
 parser.add_argument("--diffusion_id", type=str, default="runwayml/stable-diffusion-v1-5", help="CompVis/stable-diffusion-v1-4, runwayml/stable-diffusion-v1-5")
@@ -79,27 +76,21 @@ parser.add_argument("--step_size", type=int, default=20)
 parser.add_argument("--controllora_linear_rank", type=int, default=4)
 parser.add_argument("--controllora_conv2d_rank", type=int, default=0)
 
-# test_t = [[1], [21], [41], [61], [1, 21]]
-# test_t = [[81, 101, 121], [81, 101]]
-test_t = [[81]]
-
-f_layers = [[3]]
-step_sizes = [5, 10, 20, 40]
 
 def run(args):
     MODALITY_NAMES = ['RGB', 'Nmap', 'RGB+Nmap']
     if args.dataset_type=='eyecandies':
         classes = [
         'CandyCane',
-        # 'ChocolateCookie',
-        # 'ChocolatePraline',
-        # 'Confetto',
-        # 'GummyBear',
-        # 'HazelnutTruffle',
-        # 'LicoriceSandwich',
-        # 'Lollipop',
-        # 'Marshmallow',
-        # 'PeppermintCandy'
+        'ChocolateCookie',
+        'ChocolatePraline',
+        'Confetto',
+        'GummyBear',
+        'HazelnutTruffle',
+        'LicoriceSandwich',
+        'Lollipop',
+        'Marshmallow',
+        'PeppermintCandy'
         ]
     elif args.dataset_type=='mvtec3d':
         classes = [
@@ -114,35 +105,9 @@ def run(args):
         "rope",
         "tire",
         ]
-        args.data_path = "/mnt/home_6T/public/samchu0218/Datasets/mvtec3d_preprocessing/"
-    elif args.dataset_type=='mvtec2d':
-        classes = [
-            "bottle",
-            "cable",
-            "capsule",
-            "carpet",
-            "grid",
-            "hazelnut",
-            "leather",
-            "metal_nut",
-            "pill",
-            "screw",
-            "tile",
-            "toothbrush",
-            "transistor",
-            "wood",
-            "zipper",
-        ]
-        args.data_path = "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_2D/"
-    elif args.dataset_type=='mvtecloco':
-        classes = [
-            'breakfast_box', 
-            'juice_bottle', 'pushpins', 
-            'screw_bag', 
-            'splicing_connectors'
-        ]
-        MODALITY_NAMES = ['SA', 'LA', 'ALL']
-        args.data_path = "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
+    else:
+        raise SyntaxError
+
     result_file = open(osp.join(args.output_dir, "results.txt"), "a", 1)   
     
     image_rocaucs_df = pd.DataFrame(MODALITY_NAMES, columns=['Method'])
@@ -184,23 +149,15 @@ def run(args):
     result_file.close()
 
 if __name__ == "__main__":    
-    for i in test_t:
-        for j in step_sizes:
-            args = parser.parse_args()
-            args.noise_intensity = i
-            # args.topk = topk[j]
-            print(j)
-            args.step_size = j
-            if DEBUG == True:
-                FILE_NAME = "Testing"
-            else:
-                FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_Layer{args.feature_layers}_StepSize{args.step_size}_InferenceSpeed"
 
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-            args.output_dir = os.path.join(args.output_dir, args.dataset_type, time) + FILE_NAME
-            if not os.path.exists(args.output_dir):
-                os.makedirs(args.output_dir)
-            log_args(args)
-            print("current device", device)
-            run(args)
+    args = parser.parse_args()
+    FILE_NAME = f"_{args.method_name}_noiseT{args.noise_intensity}_Layer{args.feature_layers}_StepSize{args.step_size}"
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    time = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    args.output_dir = os.path.join(args.output_dir, args.dataset_type, time) + FILE_NAME
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
+    log_args(args)
+    print("current device", device)
+    run(args)

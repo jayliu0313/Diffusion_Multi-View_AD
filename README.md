@@ -34,5 +34,9 @@ python train_controlnet.py --data_path DATASET_PATH --load_unet_ckpt UNET_CKPT_P
 The result will be stored in the output directory.
 You can use "--vis" to visualize our result of the heat map. 
 ```
-python test.py --data_path DATASET_PATH --load_unet_ckpt UNET_CKPT_PATH  --load_controlnet_ckpt CONTROLNET_CKPT_PATH
+python test.py --datasets_path DATASET_PATH --grid_path data/ --ckpt_path CKPT_PATH
 ```
+
+## Reference
+Our memory architecture is refer to https://github.com/eliahuhorwitz/3D-ADS  
+3D expert model is modified from https://github.com/mabaorui/PredictableContextPrior
