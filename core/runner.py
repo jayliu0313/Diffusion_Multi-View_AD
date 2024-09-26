@@ -1,5 +1,4 @@
-from core.data import test_lightings_loader, mvtec3D_test_loader, mvtec_test_loader, mvtecLoco_test_loader
-from core.ddim_recconstruct_method import *
+from core.data import test_lightings_loader, mvtec3D_test_loader
 from core.ddim_memory_method import *
 from tqdm import tqdm
 import torch
@@ -47,8 +46,6 @@ class Runner():
     def fit(self):
         with torch.no_grad():
             for i, (lightings, nmap, text_prompt) in enumerate(tqdm(self.memory_loader, desc=f'Extracting train features for class {self.cls}')):
-                # if i == 4:
-                #     break
                 text_prompt = f'A photo of a {self.cls}'
                 self.method.add_sample_to_mem_bank(lightings, nmap, text_prompt)
             self.method.run_coreset()

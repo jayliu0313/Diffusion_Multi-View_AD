@@ -3,7 +3,7 @@
 ## Installation
 ### Requirement
 Linux (Ubuntu 16.04)  
-Python 3.6+  
+Python 3.9+  
 PyTorch 1.7 or higher  
 CUDA 10.2 or higher
 
@@ -13,7 +13,7 @@ git clone https://github.com/jayliu0313/Multi_Lightings.git
 cd Multi_Lightings
 conda create --name myenv python=3.6
 conda activate myenv
-pip install -r requirement.txt
+pip install -r requirements.txt
 ```
 ### Eyecandies Dataset
 [Here](https://eyecan-ai.github.io/eyecandies/download) to download dataset

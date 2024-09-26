@@ -14,7 +14,7 @@ from diffusers import DDIMScheduler
 from core.models.unet_model import build_unet
 from transformers import CLIPTextModel, AutoTokenizer
 from diffusers import AutoencoderKL
-from utils.ptp_utils import *
+# from utils.ptp_utils import *
 
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]

@@ -19,7 +19,7 @@ matplotlib.use('Agg')
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
-parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/", type=str)
+parser.add_argument('--data_path', default="", type=str, required=True)
 # "/mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/"
 # "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
 
@@ -104,9 +104,7 @@ class TrainUnet():
         elif args.dataset_type == "mvtec3d":
             self.train_dataloader = mvtec3D_train_loader(args)
             self.val_dataloader = mvtec3D_val_loader(args)
-        elif args.dataset_type == "mvtecloco":
-            self.train_dataloader = mvtecLoco_train_loader(args)
-            self.val_dataloader = mvtecLoco_val_loader(args)   
+            
         # Create Model
         self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")
         self.text_encoder = CLIPTextModel.from_pretrained(args.diffusion_id, subfolder="text_encoder")

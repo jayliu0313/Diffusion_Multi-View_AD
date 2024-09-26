@@ -64,3 +64,10 @@ def load_and_convert_normals(normal_img, pose_txt):
     # back to image, if needed
     normals = normals.reshape(img_shape)
     return normals
+
+
+def getPointCloud(tiff_path, target_size=None):
+    organized_pc = read_tiff_organized_pc(tiff_path)
+    resized_organized_pc = resize_organized_pc(organized_pc, target_size)
+    pc, nonzero_idx = orgpc_to_unorgpc(resized_organized_pc)
+    return pc , nonzero_idx

@@ -20,23 +20,19 @@ matplotlib.use('Agg')
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
-parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/", type=str)
-# /mnt/home_6T/public/jayliu0313/datasets/Eyecandies/
-# /mnt/home_6T/public/jayliu0313/datasets/mvtec3d_preprocessing/
-# /mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_2D/
-# "/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
+parser.add_argument('--data_path', default="", type=str)
 
-parser.add_argument('--ckpt_path', default="checkpoints/diffusion_checkpoints/TrainMVTecLoco_RGBEdgemap")
+parser.add_argument('--ckpt_path', default="")
 parser.add_argument('--load_unet_ckpt', default="")
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument('--batch_size', default=6, type=int)
-parser.add_argument('--train_type', default="mvtecloco", help="eyecandies_rgb, eyecandies_nmap, mvtec3d, mvtec2d, mvtecloco")
+parser.add_argument('--train_type', default="", help="eyecandies, mvtec3d")
 parser.add_argument('--is_feature_loss', default=True, type=bool)
 # Model Setup
 #parser.add_argument("--clip_id", type=str, default="openai/clip-vit-base-patch32")
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4", help="CompVis/stable-diffusion-v1-4, runwayml/stable-diffusion-v1-5")
-parser.add_argument("--revision", type=str, default="")
-# ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c
+parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c")
+
 # Training Setup
 parser.add_argument("--learning_rate", default=5e-6)
 parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
@@ -48,7 +44,7 @@ parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CU
 parser.add_argument("--lr_scheduler", type=str, default="constant", help=('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'' "constant", "constant_with_warmup"]'),)
 parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
 parser.add_argument('--epoch', default=0, type=int, help="Which epoch to start training at")
-parser.add_argument("--num_train_epochs", type=int, default=1000)
+parser.add_argument("--num_train_epochs", type=int, default=6)
 parser.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler.")
 parser.add_argument("--save_epoch", type=int, default=1)
 
@@ -88,12 +84,6 @@ class TrainUnet():
         elif args.train_type == "mvtec3d":
             self.train_dataloader = mvtec3D_train_loader(args)
             self.val_dataloader = mvtec3D_val_loader(args)
-        elif args.train_type == "mvtec2d":
-            self.train_dataloader = mvtec_train_loader(args)
-            self.val_dataloader = mvtec_train_loader(args)
-        elif args.train_type == "mvtecloco":
-            self.train_dataloader = mvtecLoco_train_loader(args)
-            self.val_dataloader = mvtecLoco_val_loader(args)
 
         # Create Model
         self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")

@@ -16,7 +16,7 @@ parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datas
 # /mnt/home_6T/public/jayliu0313/datasets/Eyecandies/
 
 parser.add_argument('--output_dir', default="./output")
-parser.add_argument('--dataset_type', default="mvtecloco", help="eyecandies, mvtec3d, mvtec2d, mvtecloco")
+parser.add_argument('--dataset_type', default="mvtecloco", help="eyecandies, mvtec3d")
 parser.add_argument('--batch_size', default=4, type=int)
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument("--workers", default=4)
@@ -25,17 +25,14 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="loco_rec", help=" \
-Reconstruction Base: controlnet_rec, ddim_rec, nullinv_rec\
-DDIM Base: ddim_memory, ddiminvrgb_memory, ddiminvnmap_memory, ddiminvloco_memory \
-ddiminvunified_memory, controlnet_infonce_memory, controlnet_ddiminv_memory\
-")
-parser.add_argument('--is_align', type=bool, default=False)
+parser.add_argument('--method_name', default="ddiminvunified_memory", help="ddim_memory, ddiminvrgb_memory,\
+ddiminvnmap_memory, ddiminvunified_memory, controlnet_ddiminv_memory")
+                    
 parser.add_argument('--rgb_weight', type=float, default=1)
 parser.add_argument('--nmap_weight', type=float, default=1)
 parser.add_argument('--reweight', default=False, type=bool)
 parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
-parser.add_argument('--feature_layers', default=[3], type=int)
+parser.add_argument('--feature_layers', default=[2], type=int)
 
 
 parser.add_argument('--g_feature_layers', default=[1, 2], type=int, help="just works on mvtec-loco")
@@ -43,33 +40,14 @@ parser.add_argument('--num_class', default=5, type=int, help="just works on mvte
 parser.add_argument('--topk', default=3, type=int)
 
 #### Load Checkpoint ####
-parser.add_argument("--load_vae_ckpt", default="")
 parser.add_argument("--load_unet_ckpt", default="")
-# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUNet_ClsText_FeatureLossAllLayer_AllCls_epoch130/best_unet.pth"
-# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_FeatureLossAllLayer_allcls/best_unet.pth"
-# "/mnt/home_6T/public/jayliu0313/check_point/Diffusion_ckpt/TrainUnifiedUNet_ClsText_ckpt6_allcls/best_unet.pth"
-# "checkpoints/diffusion_checkpoints/TrainMVTec2D_UnetV1-5_woAug/best_unet.pth"
-
-# Loco-AD
-# "/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec_Loco/epoch10_unet.pth"
-# checkpoints/diffusion_checkpoints/TrainMVTecLoco_RGBEdgemap/epoch10_unet.pth
-
-# Mvtec AD
-#  "/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec/epoch_unet.pth"
-# MVTec 3D-AD
-# "/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec3D/epoch10_unet.pth"
-
-
 parser.add_argument('--load_controlnet_ckpt', type=str, default="")
 
 # Unet Model (Diffusion Model)
-parser.add_argument("--diffusion_id", type=str, default="runwayml/stable-diffusion-v1-5", help="CompVis/stable-diffusion-v1-4, runwayml/stable-diffusion-v1-5")
+parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4", help="CompVis/stable-diffusion-v1-4, runwayml/stable-diffusion-v1-5")
+parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c", help="v1-4:ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c, v1-5:null")
 
-parser.add_argument("--revision", type=str, default="", help="v1-4:ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c, v1-5:null")
-
-# parser.add_argument("--noise_intensity", type=int, default=81)
 parser.add_argument("--noise_intensity", type=int, default=[81])
-parser.add_argument("--rec_noise_intensity", type=int, default=[101], help="for loco AD rec")
 parser.add_argument("--step_size", type=int, default=20)
 
 # Controlnet Model Setup
@@ -116,8 +94,7 @@ def run(args):
 
     for cls in classes:
         runner = Runner(args, cls, MODALITY_NAMES)
-        if "memory" in args.method_name:
-            runner.fit()
+        runner.fit()
         image_rocaucs, pixel_rocaucs, au_pros, rec_loss = runner.evaluate()
         image_rocaucs_df[cls.title()] = image_rocaucs_df['Method'].map(image_rocaucs)
         pixel_rocaucs_df[cls.title()] = pixel_rocaucs_df['Method'].map(pixel_rocaucs)

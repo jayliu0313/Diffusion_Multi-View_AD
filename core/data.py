@@ -6,14 +6,9 @@ import glob
 from torch.utils.data import Dataset
 from utils.mvtec3d_util import *
 from utils.pair_augment import *
-from utils.utils import CutPaste
 from torch.utils.data import DataLoader
-import cv2
-import numpy as np
-import random
 
-# IMAGENET_MEAN = [0.485, 0.456, 0.406]
-# IMAGENET_STD = [0.229, 0.224, 0.225]
+import numpy as np
 
 def eyecandies_classes():
     return [
@@ -109,13 +104,11 @@ class TestLightings(BaseDataset):
             label = 0
         return (images, normal_map, text_prompt), gt[:1], label
 
-# not use
+# load training data to build memory bank
 class MemoryLightings(BaseDataset):
-    def __init__(self, class_name, img_size, dataset_path, is_alignment=False):
+    def __init__(self, class_name, img_size, dataset_path):
         super().__init__(split="train", class_name=class_name, img_size=img_size, dataset_path=dataset_path)
         self.data_paths = self.load_dataset()  # self.labels => good : 0, anomaly : 1
-        self.cutpaste = CutPaste(type="custom")
-        self.is_alignment = is_alignment
         
     def load_dataset(self):
         data_tot_paths = []
@@ -158,17 +151,14 @@ class MemoryLightings(BaseDataset):
         for i in range(6):
             img = Image.open(rgb_path[i]).convert('RGB')
             images.append(img)
-        if self.is_alignment and idx % 2 == 0:
-            images = self.cutpaste(images)
-            n_map = self.cutpaste(n_map)
-            
+
         aug_imgs = [self.rgb_transform(img) for img in images]
         aug_nmap = [self.rgb_transform(nmap) for nmap in n_map]
         aug_imgs = torch.stack(aug_imgs)
         aug_nmap = torch.cat(aug_nmap)
         return aug_imgs, aug_nmap, text_prompt
 
-# load training image   
+# load training data (6 images + 3D normal map)   
 class TrainLightings(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies_preprocessed'):
         self.size = img_size
@@ -228,15 +218,14 @@ class TrainLightings(Dataset):
             img = self.rgb_transform(img) 
             images.append(img)
         images = torch.stack(images)
-        # images = images*2.0 - 1.0
         
         normal_path = img_path[1]
-        depth_path = img_path[2]
+        # depth_path = img_path[2]
         normal = Image.open(normal_path).convert('RGB')
         nmap = self.rgb_transform(normal)
         return images, nmap, text_prompt
 
-# load validation image using for training 
+# load validation data (6 images + 3D normal map)
 class ValLightings(Dataset):
     def __init__(self, img_size=224, dataset_path='datasets/eyecandies'):
         self.size = img_size
@@ -302,88 +291,10 @@ class ValLightings(Dataset):
         nmap = self.rgb_transform(normal)
         return images, nmap, text_prompt
 
-# load training normal map
-class TrainNmap(Dataset):
-    def __init__(self, img_size=224, dataset_path='datasets/eyecandies_preprocessed'):
-        self.size = img_size
-        self.rgb_transform = transforms.Compose(
-        [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
-         transforms.ToTensor(),
-        ])
-        self.img_path = dataset_path
-        self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
-
-    def load_dataset(self):
-        data_tot_paths = []
-        tot_labels = []
-        normal_paths = []
-
-        for cls in eyecandies_classes():
-            normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'train', 'data') + "/*_normals.png"))
-        
-        normal_paths.sort()     
-        
-        sample_paths = list(zip(normal_paths))
-        
-        data_tot_paths.extend(sample_paths)
-        tot_labels.extend([0] * len(sample_paths))
-        return data_tot_paths, tot_labels
-
-    def __len__(self):
-        return len(self.data_paths)
-
-    def __getitem__(self, idx):
-        img_path, label = self.data_paths[idx], self.labels[idx]
-        nmap_path = img_path[0]
-        nmap = Image.open(nmap_path).convert('RGB')
-        nmap = self.rgb_transform(nmap)
-        return nmap
-
-# load training normal map using for training 
-class ValNmap(Dataset):
-    def __init__(self, img_size=224, dataset_path='datasets/eyecandies'):
-        self.size = img_size
-        self.rgb_transform = transforms.Compose(
-        [transforms.Resize((self.size, self.size), interpolation=transforms.InterpolationMode.BICUBIC),
-         transforms.ToTensor(),
-        ])
-        self.img_path = dataset_path
-        self.data_paths, self.labels = self.load_dataset()  # self.labels => good : 0, anomaly : 1
-
-    def load_dataset(self):
-        data_tot_paths = []
-        tot_labels = []
-        normal_paths = []
-
-        for cls in eyecandies_classes():
-            normal_paths.extend(glob.glob(os.path.join(self.img_path, cls, 'val', 'data') + "/*_normals.png"))
-
-        normal_paths.sort()     
-
-        sample_paths = list(zip(normal_paths))
-    
-        data_tot_paths.extend(sample_paths)
-        tot_labels.extend([0] * len(sample_paths))
-        return data_tot_paths, tot_labels
-
-    def __len__(self):
-        return len(self.data_paths)
-
-    def __getitem__(self, idx):
-        img_path, label = self.data_paths[idx], self.labels[idx]
-        nmap_path = img_path[0]
-        nmap = Image.open(nmap_path).convert('RGB')
-        nmap = self.rgb_transform(nmap)
-        return nmap
-
 def test_lightings_loader(args, cls, split):
     if split == 'memory':
-        dataset = MemoryLightings(cls, args.image_size, args.data_path, False)
+        dataset = MemoryLightings(cls, args.image_size, args.data_path)
         data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, drop_last=False,
-                                pin_memory=True)
-    elif split == 'memory_align':
-        dataset = MemoryLightings(cls, args.image_size, args.data_path, False)
-        data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=True, num_workers=args.workers, drop_last=False,
                                 pin_memory=True)
     elif split == 'test':
         dataset = TestLightings(cls, args.image_size, args.data_path)
@@ -399,18 +310,6 @@ def train_lightings_loader(args):
 
 def val_lightings_loader(args):
     dataset = ValLightings(args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=True,
-                              pin_memory=True)
-    return data_loader
-
-def train_nmap_loader(args):
-    dataset = TrainNmap(args.image_size, args.data_path)
-    data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=True, drop_last=True,
-                              pin_memory=True)
-    return data_loader
-
-def val_nmap_loader(args):
-    dataset = ValNmap(args.image_size, args.data_path)
     data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, num_workers=args.workers, shuffle=False, drop_last=True,
                               pin_memory=True)
     return data_loader
@@ -502,27 +401,15 @@ class MVTec3DTrain(Dataset):
     def __getitem__(self, idx):
         img_path, label, cls = self.img_paths[idx], self.labels[idx], self.cls_list[idx]
         rgb_path = img_path[0]
-        tiff_path = img_path[1]
+        # tiff_path = img_path[1]
         nmap_path = img_path[2]
         text_prompt = "A photo of a " + cls
         
         #load image data
-        # organized_pc = read_tiff_organized_pc(tiff_path)
-        # resized_org_pc = resize_organized_pc(organized_pc, self.img_size, self.img_size)
-        # zero_indices = get_zero_indices(resized_org_pc)
-        #depth_map_3channel = np.repeat(organized_pc_to_depth_map(organized_pc)[:, :, np.newaxis], 3, axis=2)
-        #resized_depth_map_3channel = resize_organized_pc(depth_map_3channel)
-        
-        to_pil_image = transforms.ToPILImage()
         img = Image.open(rgb_path).convert('RGB')
         nmap = Image.open(nmap_path).convert('RGB')
         img, nmap = self.paired_transform(img, nmap)
         
-        # img = img.permute(1, 2, 0)
-        # H, W, C = img.shape
-        # img = img.reshape(H * W, C)
-        # img[zero_indices, :] = torch.tensor([0, 1.0, 0]).repeat(zero_indices.shape[0], 1)
-        # img = img.reshape(H, W, C).permute(2, 0, 1)
         return img, nmap, text_prompt
 
 class MVTec3DTest(Dataset):

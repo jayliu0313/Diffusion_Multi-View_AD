@@ -1,17 +1,15 @@
 import open3d as o3d
-import open3d.visualization.gui as gui
-import open3d.visualization.rendering as rendering
 
 import cv2
 import os
 import numpy as np
-import json
 from PIL import Image 
-from utils import getPointCloud
+from utils.mvtec3d_util import getPointCloud
 from tqdm import tqdm
-DATASET_PATH = "D:\\Project\\Dataset\\MVTec_3D\\"
-RESULT_PATH = "C:\\Users\\samch\\Desktop\\test\\lighting\\results\\"
-#CLASS = "cable_gland"
+DATASET_PATH = ""
+RESULT_PATH = ""
+
+
 CLASS = [
         "bagel",
         "cable_gland",
@@ -97,10 +95,7 @@ import glob
         
 if __name__ == "__main__":
 
-    #points = load_pontsRGB(DATASET_PATH + CLASS + f"\\{SPLIT}\\{TYPE}\\xyz\\{ID}.tiff", DATASET_PATH + CLASS + f"\\{SPLIT}\\{TYPE}\\rgb\\{ID}.png")
-
-    for cls_name in CLASS:
-        
+    for cls_name in CLASS:  
         # Training Data #
         tiff_paths = glob.glob(os.path.join(DATASET_PATH, cls_name, "train", 'good', 'xyz') + "/*.tiff")
         save_dir = os.path.join(RESULT_PATH, cls_name, "train", 'good', 'nmap')

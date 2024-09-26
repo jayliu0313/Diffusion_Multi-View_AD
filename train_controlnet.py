@@ -163,107 +163,6 @@ def normalize(*xs):
     return [None if x is None else F.normalize(x, dim=-1) for x in xs]
 
 
-class ContrastiveLoss(nn.Module):
-    def __init__(self):
-        super(ContrastiveLoss, self).__init__()
-        self.T = 0.5
-
-    def info_nce(self, query, positive_key, negative_keys=None, temperature=0.1, reduction='mean', negative_mode='unpaired'):
-        B, C, H, W = query.shape
-        query = query.permute(0, 2, 3, 1).reshape(B*H*W, C)
-        positive_key = positive_key.permute(0, 2, 3, 1).reshape(B*H*W, C)
-        # Check input dimensionality.
-        if query.dim() != 2:
-            raise ValueError('<query> must have 2 dimensions.')
-        if positive_key.dim() != 2:
-            raise ValueError('<positive_key> must have 2 dimensions.')
-        if negative_keys is not None:
-            if negative_mode == 'unpaired' and negative_keys.dim() != 2:
-                raise ValueError("<negative_keys> must have 2 dimensions if <negative_mode> == 'unpaired'.")
-            if negative_mode == 'paired' and negative_keys.dim() != 3:
-                raise ValueError("<negative_keys> must have 3 dimensions if <negative_mode> == 'paired'.")
-
-        # Check matching number of samples.
-        if len(query) != len(positive_key):
-            raise ValueError('<query> and <positive_key> must must have the same number of samples.')
-        if negative_keys is not None:
-            if negative_mode == 'paired' and len(query) != len(negative_keys):
-                raise ValueError("If negative_mode == 'paired', then <negative_keys> must have the same number of samples as <query>.")
-
-        # Embedding vectors should have same number of components.
-        if query.shape[-1] != positive_key.shape[-1]:
-            raise ValueError('Vectors of <query> and <positive_key> should have the same number of components.')
-        if negative_keys is not None:
-            if query.shape[-1] != negative_keys.shape[-1]:
-                raise ValueError('Vectors of <query> and <negative_keys> should have the same number of components.')
-
-        # Normalize to unit vectors
-        query, positive_key, negative_keys = normalize(query, positive_key, negative_keys)
-        if negative_keys is not None:
-            # Explicit negative keys
-
-            # Cosine between positive pairs
-            positive_logit = torch.sum(query * positive_key, dim=1, keepdim=True)
-
-            if negative_mode == 'unpaired':
-                # Cosine between all query-negative combinations
-                negative_logits = query @ transpose(negative_keys)
-
-            elif negative_mode == 'paired':
-                query = query.unsqueeze(1)
-                negative_logits = query @ transpose(negative_keys)
-                negative_logits = negative_logits.squeeze(1)
-
-            # First index in last dimension are the positive samples
-            logits = torch.cat([positive_logit, negative_logits], dim=1)
-            labels = torch.zeros(len(logits), dtype=torch.long, device=query.device)
-        else:
-            # Negative keys are implicitly off-diagonal positive keys.
-
-            # Cosine between all combinations
-            logits = query @ transpose(positive_key)
-
-            # Positive keys are the entries on the diagonal
-            labels = torch.arange(len(query), device=query.device)
-
-        return F.cross_entropy(logits / temperature, labels, reduction=reduction)
-
-
-    def forward(self, model_output):
-        unet_f_layer0 = model_output['up_ft'][0]
-        RGB_unet_f_layer0  = unet_f_layer0[:args.batch_size]
-        Nmap_unet_f_layer0 = unet_f_layer0[args.batch_size:]
-        loss = self.info_nce(RGB_unet_f_layer0, Nmap_unet_f_layer0)
-        
-        unet_f_layer1 = model_output['up_ft'][1]
-        RGB_unet_f_layer1  = unet_f_layer1[:args.batch_size]
-        Nmap_unet_f_layer1 = unet_f_layer1[args.batch_size:]
-        loss += self.info_nce(RGB_unet_f_layer1, Nmap_unet_f_layer1)
-        
-        unet_f_layer2 = model_output['up_ft'][2]
-        RGB_unet_f_layer2  = unet_f_layer2[:args.batch_size]
-        Nmap_unet_f_layer2 = unet_f_layer2[args.batch_size:]
-        loss += self.info_nce(RGB_unet_f_layer2, Nmap_unet_f_layer2)
-
-        unet_f_layer3 = model_output['up_ft'][3]
-        RGB_unet_f_layer3  = unet_f_layer3[:args.batch_size]
-        Nmap_unet_f_layer3 = unet_f_layer3[args.batch_size:]
-        loss += self.info_nce(RGB_unet_f_layer3, Nmap_unet_f_layer3)
-        return loss
-    
-    # def compute_loss(self, feature_map1, feature_map2):
-    #     B, C, H, W = feature_map1.shape
-    #     # Flatten the feature maps
-    #     feature_map1_flat = feature_map1.permute(0, 2, 3, 1).reshape(B*H*W, C)
-    #     feature_map2_flat = feature_map2.permute(0, 2, 3, 1).reshape(B*H*W, C)
-    #     q = nn.functional.normalize(feature_map1_flat, dim=1)
-    #     k = nn.functional.normalize(feature_map2_flat, dim=1)
-    #     # Compute cosine similarity
-    #     similarities = torch.einsum('nc,mc->nm', [q, k]) / self.T
-    #     N = similarities.shape[0]
-    #     labels = torch.arange(N, dtype=torch.long).cuda()
-    #     loss = nn.CrossEntropyLoss()(similarities, labels) * (2 * self.T)
-    #     return loss
 
 class TrainUnet():
     def __init__(self, args, device):
@@ -285,9 +184,7 @@ class TrainUnet():
             self.train_dataloader = mvtec3D_train_loader(args)
             self.val_dataloader = mvtec3D_val_loader(args)
             self.contrastive = ContrastiveLoss()
-        elif args.dataset_type == "mvtecloco":
-            self.train_dataloader = mvtecLoco_train_loader(args)
-            self.val_dataloader = mvtecLoco_val_loader(args)
+ 
 
         # Create Model
         self.tokenizer = AutoTokenizer.from_pretrained(args.diffusion_id, subfolder="tokenizer")
