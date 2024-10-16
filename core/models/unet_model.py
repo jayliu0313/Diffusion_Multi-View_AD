@@ -1,5 +1,4 @@
 import torch
-from torch.autograd import Variable
 from typing import Any, Dict, List, Optional, Tuple, Union
 from diffusers import UNet2DConditionModel
 from ptflops import get_model_complexity_info

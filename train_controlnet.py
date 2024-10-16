@@ -23,9 +23,6 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 parser = argparse.ArgumentParser(description='train')
 parser.add_argument('--data_path', default="/mnt/home_6T/public/samchu0218/Datasets/mvtec3d_preprocessing/", type=str)
-# "/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/"
-# "/mnt/home_6T/public/samchu0218/Datasets/mvtec3d_preprocessing/"
-#"/mnt/home_6T/public/samchu0218/Raw_Datasets/MVTec_AD/MVTec_Loco/"
 parser.add_argument('--ckpt_path', default="./checkpoints/controlnet_model/mvtec3d_InfoNCE/") # 
 parser.add_argument('--load_vae_ckpt', default=None)
 parser.add_argument('--load_unet_ckpt', default="/home/samchu0218/Multi_Lightings/checkpoints/unet_model/MVTec3D/epoch10_unet.pth")
@@ -53,7 +50,7 @@ parser.add_argument('--CUDA', type=int, default=0, help="choose the device of CU
 parser.add_argument("--lr_scheduler", type=str, default="constant", help=('The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'' "constant", "constant_with_warmup"]'),)
 parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
 parser.add_argument('--epoch', default=0, type=int, help="Which epoch to start training at")
-parser.add_argument("--num_train_epochs", type=int, default=100)
+parser.add_argument("--num_train_epochs", type=int, default=50)
 parser.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler.")
 parser.add_argument("--save_epoch", type=int, default=3)
 
@@ -176,6 +173,7 @@ class TrainUnet():
         self.val_log_file = open(osp.join(args.ckpt_path, "val_log.txt"), "a", 1)
         self.use_floss = args.use_floss
         self.dataset_type = args.dataset_type
+
         # Load training and validation data
         if args.dataset_type == "eyecandies":
             self.train_dataloader = train_lightings_loader(args)
@@ -183,7 +181,6 @@ class TrainUnet():
         elif args.dataset_type == "mvtec3d":
             self.train_dataloader = mvtec3D_train_loader(args)
             self.val_dataloader = mvtec3D_val_loader(args)
-            self.contrastive = ContrastiveLoss()
  
 
         # Create Model
@@ -237,11 +234,6 @@ class TrainUnet():
         latents = self.vae.encode(x).latent_dist.sample()
         latents = latents * 0.18215
         return latents
-
-    def latents2image(self, latents):
-        latents = 1 / 0.18215 * latents
-        image = self.vae.decode(latents).sample
-        return image.clamp(-1, 1)
 
     def forward_process(self, x_0):
         noise = torch.randn_like(x_0) # Sample noise that we'll add to the latents
@@ -318,11 +310,6 @@ class TrainUnet():
                 if self.dataset_type == "eyecandies" and self.use_floss:
                     feature_loss = compute_mean_feature_loss(model_output)
                     loss = noise_loss + 0.01 * feature_loss
-                    val_noise_loss += noise_loss.item()
-                    val_feature_loss += feature_loss.item()
-                if self.dataset_type == "mvtec3d" and self.use_floss:
-                    feature_loss = self.contrastive(model_output)
-                    loss = noise_loss + 0.001 * feature_loss
                     val_noise_loss += noise_loss.item()
                     val_feature_loss += feature_loss.item()
                 else:
@@ -410,12 +397,6 @@ class TrainUnet():
                 if self.dataset_type == "eyecandies" and self.use_floss:
                     feature_loss = compute_mean_feature_loss(model_output)
                     loss = noise_loss + 0.01 * feature_loss
-                    epoch_noise_loss += noise_loss.item()
-                    epoch_feature_loss += feature_loss.item()
-                if self.dataset_type == "mvtec3d" and self.use_floss:
-                    feature_loss = self.contrastive(model_output)
-                    # feature_loss = compute_diff_modality_loss(model_output)
-                    loss = noise_loss + 0.001 * feature_loss
                     epoch_noise_loss += noise_loss.item()
                     epoch_feature_loss += feature_loss.item()
                 else:

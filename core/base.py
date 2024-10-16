@@ -1,13 +1,12 @@
 import torch
-import argparse
 import numpy as np
 import os
 from torchvision import transforms
-from tqdm import tqdm
 from utils.au_pro_util import calculate_au_pro
 from utils.visualize_util import *
 from utils.utils import KNNGaussianBlur
 from sklearn.metrics import roc_auc_score
+from typing import Union
 
 # Diffusion model
 from diffusers import DDIMScheduler
@@ -42,7 +41,6 @@ class Base_Method():
         self.cls_path = cls_path
         self.cls_rec_loss = 0.0
         self.reconstruct_path = os.path.join(cls_path, "Reconstruction")
-        self.score_type = args.score_type
         self.viz = args.viz
         self.pdist = torch.nn.PairwiseDistance(p=2, eps= 1e-12)
         self.cos = torch.nn.CosineSimilarity()
@@ -69,15 +67,9 @@ class Base_Method():
     def add_sample_to_mem_bank(self, lightings, nmap, text_prompt):
         pass
     
-    def alginment(self, lightings, nmap, text_prompt):
-        pass
-    
     def predict(self, item, lightings, gt, label):
         pass
     
-    def cluster_training_data(self):
-        pass
-
     def calculate_metrics(self, modality_name, cls_name=None):
 
         image_labels = np.stack(self.image_labels)
@@ -114,9 +106,6 @@ class Base_Method():
         self.pixel_rocauc = roc_auc_score(flatten_pixel_labels, flatten_pixel_preds)
         self.au_pro, _ = calculate_au_pro(gts, predictions)
         return self.image_rocauc, self.pixel_rocauc, self.au_pro
-    
-    def get_rec_loss(self):
-        return self.cls_rec_loss
     
     def visualizae_heatmap(self, modality_name, cls_name=None):
         self.pixel_labels = np.stack(self.pixel_labels)
@@ -160,34 +149,7 @@ class Base_Method():
         label = np.array(self.image_labels)
         
         visualize_image_s_distribute(rgb_s, label, cls_path)
-        
-        
-    def cal_alignment(self):
-        # nmap distribution
-        nmap = np.array(self.nmap_pixel_preds)
-        non_zero_indice = np.nonzero(nmap)
-        non_zero_nmap = nmap[non_zero_indice]
-        nmap_mean = np.mean(non_zero_nmap)
-        nmap_std = np.std(non_zero_nmap)
-        nmap_lower = nmap_mean - 3 * nmap_std
-        nmap_upper = nmap_mean + 3 * nmap_std
-        # RGB distribution
-        rgb_map = np.array(self.rgb_pixel_preds)
-        non_zero_indice = np.nonzero(rgb_map)
-        non_zero_rgb_map = rgb_map[non_zero_indice]
-        rgb_mean = np.mean(non_zero_rgb_map)
-        rgb_std = np.std(non_zero_rgb_map)
-        rgb_lower = rgb_mean - 3 * rgb_std
-        rgb_upper = rgb_mean + 3 * rgb_std
-        
-        self.weight = (nmap_upper - nmap_lower) / (rgb_upper - rgb_lower)
-        self.bias = nmap_lower - self.weight * rgb_lower
-        print("weight:", self.weight)
-        print("bias:", self.bias)
-        self.nmap_image_preds = []
-        self.rgb_image_preds = []
-        self.nmap_pixel_preds = []
-        self.rgb_pixel_preds = []
+            
     
 class DDIM_Method(Base_Method):
     def __init__(self, args, cls_path):
@@ -237,7 +199,6 @@ class DDIM_Method(Base_Method):
         self.uncond_embeddings = self.get_text_embedding("", 6) # [6, 77, 768]
 
         self.mul_timesteps = args.noise_intensity
-        self.reweight = args.reweight
         self.feature_layers = args.feature_layers
         self.topk = args.topk
     

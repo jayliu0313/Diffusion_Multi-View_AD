@@ -12,11 +12,10 @@ parser = argparse.ArgumentParser(description='test')
 DEBUG = False
 
 # Dataset and environment setup
-parser.add_argument('--data_path', default="/mnt/home_6T/public/jayliu0313/datasets/Eyecandies/", type=str)
-# /mnt/home_6T/public/jayliu0313/datasets/Eyecandies/
+parser.add_argument('--data_path', default="", type=str)
 
 parser.add_argument('--output_dir', default="./output")
-parser.add_argument('--dataset_type', default="mvtecloco", help="eyecandies, mvtec3d")
+parser.add_argument('--dataset_type', default="eyecandies", help="eyecandies, mvtec3d")
 parser.add_argument('--batch_size', default=4, type=int)
 parser.add_argument('--image_size', default=256, type=int)
 parser.add_argument("--workers", default=4)
@@ -25,18 +24,12 @@ parser.add_argument('--viz', action="store_true")
 parser.add_argument('--seed', type=int, default=7)
 
 # Method choose
-parser.add_argument('--method_name', default="ddiminvunified_memory", help="ddim_memory, ddiminvrgb_memory,\
+parser.add_argument('--method_name', default="controlnet_ddiminv_memory", help="ddim_memory, ddiminvrgb_memory,\
 ddiminvnmap_memory, ddiminvunified_memory, controlnet_ddiminv_memory")
                     
 parser.add_argument('--rgb_weight', type=float, default=1)
 parser.add_argument('--nmap_weight', type=float, default=1)
-parser.add_argument('--reweight', default=False, type=bool)
-parser.add_argument('--score_type', default=0, type=int, help="0 is max score, 1 is mean score") # just for score map, max score: maximum each pixel of 6 score maps, mean score: mean of 6 score maps 
-parser.add_argument('--feature_layers', default=[2], type=int)
-
-
-parser.add_argument('--g_feature_layers', default=[1, 2], type=int, help="just works on mvtec-loco")
-parser.add_argument('--num_class', default=5, type=int, help="just works on mvtec-loco")  
+parser.add_argument('--feature_layers', default=[3], type=int, action='append')
 parser.add_argument('--topk', default=3, type=int)
 
 #### Load Checkpoint ####
@@ -47,7 +40,7 @@ parser.add_argument('--load_controlnet_ckpt', type=str, default="")
 parser.add_argument("--diffusion_id", type=str, default="CompVis/stable-diffusion-v1-4", help="CompVis/stable-diffusion-v1-4, runwayml/stable-diffusion-v1-5")
 parser.add_argument("--revision", type=str, default="ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c", help="v1-4:ebb811dd71cdc38a204ecbdd6ac5d580f529fd8c, v1-5:null")
 
-parser.add_argument("--noise_intensity", type=int, default=[81])
+parser.add_argument("--noise_intensity", type=int, default=[81], action='append')
 parser.add_argument("--step_size", type=int, default=20)
 
 # Controlnet Model Setup

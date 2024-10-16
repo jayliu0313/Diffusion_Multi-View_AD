@@ -1,36 +1,16 @@
 import torch
-import torch.nn as nn
-from torchvision import transforms
+
 from core.base import DDIM_Method
-from utils.utils import t2np, nxn_cos_sim
+from utils.utils import t2np
 from core.models.controllora import  ControlLoRAModel
-from torch.optim.adam import Adam
+
 # from scipy.stats import wasserstein_distance
 # from scipy.spatial.distance import cdist
 from utils.ptp_utils import *
-from geomloss import SamplesLoss
-from utils.visualize_util import display_one_img
-# from sinkhorn import sinkhorn
-# # from pyemd import emd
-# from dist_matrix.cuda_dist_matrix_full import dist_matrix as gpu_dist_matrix
-# import ot
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-import ot
-
-import os
-import os.path as osp
-np.seterr(divide='ignore', invalid='ignore')
 
 class Memory_Method(DDIM_Method):
     def __init__(self, args, cls_path):
         super().__init__(args, cls_path)
-        self.f_coreset = 1
-        self.coreset_eps = 0.9
-        self.n_reweight = 3
-        self.target_timestep = max(args.noise_intensity)
-        # print(self.target_timestep)
         self.patch_lib = []
         self.nmap_patch_lib = []
         
@@ -53,17 +33,7 @@ class Memory_Method(DDIM_Method):
         #s_star = torch.max(smap)
         topk_value, _ = torch.topk(smap, k=self.topk)
         s_star = torch.mean(topk_value)
-        if self.reweight:
-            s_idx = torch.argmax(smap)
-            m_test = target_patch[s_idx].unsqueeze(0)  # anomalous patch
-            m_star = target_patch_lib[min_idx[s_idx]].unsqueeze(0)  # closest neighbour
-            w_dist = torch.cdist(m_star, target_patch_lib)  # find knn to m_star pt.1
-            _, nn_idx = torch.topk(w_dist, k=self.n_reweight, largest=False)  # pt.2
 
-            m_star_knn = torch.linalg.norm(m_test - target_patch_lib[nn_idx[0, 1:]], dim=1)
-            D = torch.sqrt(torch.tensor(target_patch.shape[1]))
-            w = 1 - (torch.exp(s_star / D) / (torch.sum(torch.exp(m_star_knn / D)) + 1e-5))
-            s_star = w * s_star
         smap = smap.view(1, 1, *feature_map_dims)
         smap = torch.nn.functional.interpolate(smap, size=(self.image_size, self.image_size), mode='bilinear')
         smap = self.blur(smap.to('cpu'))
@@ -212,7 +182,6 @@ class DDIMInvNmap_Memory(Memory_Method):
         
         unet_f = self.get_unet_f(latents, text_emb, islighting=False)
         self.patch_lib.append(unet_f.cpu())
-
 
     def predict(self, i, lightings, nmap, text_prompt, gt, label):
         nmap = nmap.to(self.device)

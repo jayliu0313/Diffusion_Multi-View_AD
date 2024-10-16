@@ -1,9 +1,7 @@
 from collections import OrderedDict
 from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
-import torch
 from torch import nn
-from torch.nn import functional as F
 
 from diffusers.configuration_utils import register_to_config
 from diffusers.utils import logging
