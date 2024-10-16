@@ -67,5 +67,7 @@ python test.py --datasets_path [DATASET_PATH] --load_unet_ckpt [UNET_CKPT_PATH] 
 
 ## Reference
 Our training pipeline is refer to https://github.com/johannakarras/DreamPose.
+
 Our memory architecture is refer to https://github.com/jayliu0313/Shape-Guided.
+
 During testing, we referred to the strategy of Null-Text Inversion: https://github.com/google/prompt-to-prompt/#null-text-inversion-for-editing-real-images.
