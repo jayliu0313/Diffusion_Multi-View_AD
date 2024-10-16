@@ -30,7 +30,7 @@ python train_controlnet.py --data_path DATASET_PATH --load_unet_ckpt UNET_CKPT_P
 ```
 
 ### Buid Memory and Inference
-The result will be stored in the output directory.
+The result will be stored in the output directory. <br />
 You can use "--vis" to visualize our result of the heat map. 
 ```
 python test.py --datasets_path DATASET_PATH --load_unet_ckpt UNET_CKPT_PATH --load_controlnet_ckpt CONTROLNET_CKPT_PATH
@@ -44,7 +44,7 @@ We also provide another dataset MVTec3D-AD, which demonstrates the generalizabil
 
 ## MvTec3D-AD Implementation
 ### Preprocessing
-In MVTec3D_preprocess.py, you need to change the variable ```DATASET_PATH```, which is the root directory of the MVTec 3D-AD dataset; and also change the variable ```RESULT_PATH```, which is the target location where the dataset is stored after preprocessing.
+In MVTec3D_preprocess.py, you need to change the variable ```DATASET_PATH```, which is the root directory of the MVTec 3D-AD dataset; and also change the variable ```RESULT_PATH```, which is the target location where the dataset is stored after preprocessing. <br />
 After setting, you can run and wait few minutes:
 ```
 python MVTec3D_preprocess.py
@@ -59,15 +59,13 @@ python train_controlnet.py --data_path [PREPROCESS_DATASET_PATH]--load_unet_ckpt
 ```
 
 ### Buid Memory and Inference
-The result will be stored in the output directory.
+The result will be stored in the output directory. <br />
 You can use "--vis" to visualize our result of the heat map. 
 ```
 python test.py --datasets_path [DATASET_PATH] --load_unet_ckpt [UNET_CKPT_PATH] --load_controlnet_ckpt [CONTROLNET_CKPT_PATH] --dataset_type mvtec3d --topk 3 --rgb_weight 0.25 --nmap_weight 0.75 --noise_intensity 41 --feature_layers 2 --feature_layers 3
 ```
 
 ## Reference
-Our training pipeline is refer to https://github.com/johannakarras/DreamPose.
-
-Our memory architecture is refer to https://github.com/jayliu0313/Shape-Guided.
-
-During testing, we referred to the strategy of Null-Text Inversion: https://github.com/google/prompt-to-prompt/#null-text-inversion-for-editing-real-images.
+Our training pipeline is refer to https://github.com/johannakarras/DreamPose. <br />
+Our memory architecture is refer to https://github.com/jayliu0313/Shape-Guided. <br />
+During testing, we referred to the strategy of Null-Text Inversion: https://github.com/google/prompt-to-prompt/#null-text-inversion-for-editing-real-images. <br />
