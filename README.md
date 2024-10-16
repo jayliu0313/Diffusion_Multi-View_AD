@@ -22,18 +22,19 @@ pip install -r requirements.txt
 
 ## Eyecandies Implementation
 ### Finetune the UNet and CountrolNet
+Please remember to modify the variables in the brackets below.
 ```
-python train_unet.py --data_path DATASET_PATH --ckpt_path SAVE_PATH
+python train_unet.py --data_path [DATASET_PATH] --ckpt_path [SAVE_PATH]
 ```
 ```
-python train_controlnet.py --data_path DATASET_PATH --load_unet_ckpt UNET_CKPT_PATH --ckpt_path SAVE_PATH
+python train_controlnet.py --data_path [DATASET_PATH] --load_unet_ckpt [UNET_CKPT_PATH] --ckpt_path [SAVE_PATH]
 ```
 
 ### Buid Memory and Inference
 The result will be stored in the output directory. <br />
 You can use "--vis" to visualize our result of the heat map. 
 ```
-python test.py --datasets_path DATASET_PATH --load_unet_ckpt UNET_CKPT_PATH --load_controlnet_ckpt CONTROLNET_CKPT_PATH
+python test.py --datasets_path [DATASET_PATH] --load_unet_ckpt [UNET_CKPT_PATH] --load_controlnet_ckpt [CONTROLNET_CKPT_PATH]
 ```
 
 ---------------------------------------------------------------------------------------
@@ -51,6 +52,7 @@ python MVTec3D_preprocess.py
 ```
 
 ### Finetune the UNet and CountrolNet
+Please remember to modify the variables in the brackets below.
 ```
 python train_unet.py --data_path [DATASET_PATH] --ckpt_path [SAVE_PATH] --dataset_type mvtec3d --diffusion_id runwayml/stable-diffusion-v1-5
 ```
@@ -60,7 +62,7 @@ python train_controlnet.py --data_path [PREPROCESS_DATASET_PATH]--load_unet_ckpt
 
 ### Buid Memory and Inference
 The result will be stored in the output directory. <br />
-You can use "--vis" to visualize our result of the heat map. 
+You can add "--vis" to visualize our result of the heat map. 
 ```
 python test.py --datasets_path [DATASET_PATH] --load_unet_ckpt [UNET_CKPT_PATH] --load_controlnet_ckpt [CONTROLNET_CKPT_PATH] --dataset_type mvtec3d --topk 3 --rgb_weight 0.25 --nmap_weight 0.75 --noise_intensity 41 --feature_layers 2 --feature_layers 3
 ```
